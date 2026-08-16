@@ -54,8 +54,8 @@ fun SharingConsentDialog(
             )
             Text(
                 text = "Streaming a title over BitTorrent also uploads it to other people, and your " +
-                    "home IP address is visible to everyone else sharing that title. Only public-domain " +
-                    "titles are included in this app.",
+                    "home IP address is visible to everyone else sharing that title. Only share what " +
+                    "you have the right to redistribute.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TorfilxColors.TextSecondary,
             )
@@ -65,8 +65,10 @@ fun SharingConsentDialog(
                 color = TorfilxColors.TextSecondary,
             )
             Text(
-                text = "You can turn sharing off at any time in Settings. With sharing off you can " +
-                    "still play everything from your media server.",
+                // Accurate since the app became torrent-only: there is no other source to fall back
+                // on, so declining here means nothing plays until sharing is turned on again.
+                text = "You can turn sharing off at any time in Settings. Every title here is played " +
+                    "over BitTorrent, so playback stops working while sharing is off.",
                 style = MaterialTheme.typography.labelLarge,
                 color = TorfilxColors.TextTertiary,
             )

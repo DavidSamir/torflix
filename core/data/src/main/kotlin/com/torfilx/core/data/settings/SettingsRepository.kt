@@ -6,32 +6,58 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import androidx.datastore.preferences.preferencesDataStoreFile
+import com.torfilx.core.common.di.Dispatcher
+import com.torfilx.core.common.di.TorfilxDispatcher
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.model.AppSettings
 import com.torfilx.core.model.QualityPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "Settings"
 
-internal val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "torfilx_settings")
-
 /**
  * User settings (plan.md §8.3).
  *
  * The API token is *not* stored here — it lives in [SecureTokenStore] so it is encrypted at rest.
+ *
+ * Nothing here touches disk while the object is being constructed. Hilt builds this singleton on the
+ * main thread inside `MainActivity.onCreate`, and opening a DataStore there cost a Fire OS 5 stick
+ * its first frame: the activity never finished `onCreate`, so the app showed a black screen forever.
+ * The store is created on first *collection* instead, on [ioDispatcher].
  */
 @Singleton
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
+    @Dispatcher(TorfilxDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
+
+    private val dataStore: DataStore<Preferences> by lazy {
+        PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(ioDispatcher + SupervisorJob()),
+            produceFile = { context.preferencesDataStoreFile("torfilx_settings") },
+        )
+    }
+
+    /**
+     * Cold: [dataStore] is not built until something collects, which never happens on the main
+     * thread. Every flow below is derived from this one.
+     */
+    private val preferences: Flow<Preferences> = flow { emitAll(dataStore.data) }
 
     private object Keys {
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
@@ -48,7 +74,7 @@ class SettingsRepository @Inject constructor(
         val STORAGE_FRACTION = stringPreferencesKey("storage_fraction")
     }
 
-    val settings: Flow<AppSettings> = context.settingsDataStore.data
+    val settings: Flow<AppSettings> = preferences
         .catch { throwable ->
             // A corrupted preferences file must not brick the app; fall back to defaults.
             if (throwable is IOException) {
@@ -79,22 +105,22 @@ class SettingsRepository @Inject constructor(
      * Default false, and nothing torrent-related runs until it is true: uploading redistributes
      * whatever is being watched, which is the user.s call, not the app.s.
      */
-    val sharingConsent: Flow<Boolean> = context.settingsDataStore.data
+    val sharingConsent: Flow<Boolean> = preferences
         .catch { emit(emptyPreferences()) }
         .map { it[Keys.SHARING_CONSENT] ?: false }
 
     /** True once the first-run sharing screen has been answered either way. */
-    val sharingConsentAnswered: Flow<Boolean> = context.settingsDataStore.data
+    val sharingConsentAnswered: Flow<Boolean> = preferences
         .catch { emit(emptyPreferences()) }
         .map { it[Keys.SHARING_CONSENT_SEEN] ?: false }
 
     /** Keep seeding after playback finishes, within the storage budget. */
-    val seedingEnabled: Flow<Boolean> = context.settingsDataStore.data
+    val seedingEnabled: Flow<Boolean> = preferences
         .catch { emit(emptyPreferences()) }
         .map { it[Keys.SEEDING_ENABLED] ?: true }
 
     /** Fraction of free space the torrent cache may use. */
-    val storageFraction: Flow<Float> = context.settingsDataStore.data
+    val storageFraction: Flow<Float> = preferences
         .catch { emit(emptyPreferences()) }
         .map { it[Keys.STORAGE_FRACTION]?.toFloatOrNull() ?: DEFAULT_STORAGE_FRACTION }
 
@@ -126,13 +152,17 @@ class SettingsRepository @Inject constructor(
         const val DEFAULT_STORAGE_FRACTION = 0.5f
     }
 
+    // Writes are moved to the IO dispatcher explicitly: a setter called from a screen runs on the
+    // main thread, and that is where the store would otherwise be opened for the first time.
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
-        context.settingsDataStore.edit(block)
+        withContext(ioDispatcher) { dataStore.edit(block) }
     }
 
     private suspend fun editNullable(key: Preferences.Key<String>, value: String?) {
-        context.settingsDataStore.edit { prefs ->
-            if (value.isNullOrBlank()) prefs.remove(key) else prefs[key] = value
+        withContext(ioDispatcher) {
+            dataStore.edit { prefs ->
+                if (value.isNullOrBlank()) prefs.remove(key) else prefs[key] = value
+            }
         }
     }
 }

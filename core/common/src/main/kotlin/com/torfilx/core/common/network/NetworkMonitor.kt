@@ -2,6 +2,7 @@ package com.torfilx.core.common.network
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.os.Build
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -71,7 +72,15 @@ class ConnectivityNetworkMonitor @Inject constructor(
         .conflate()
         .distinctUntilChanged()
 
+    /**
+     * `getActiveNetwork()` arrived in API 23. Calling it on a Fire OS 5 stick throws
+     * [NoSuchMethodError], so the pre-23 path uses the deprecated (but present) NetworkInfo API.
+     */
     private fun ConnectivityManager.isCurrentlyConnected(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            @Suppress("DEPRECATION")
+            return activeNetworkInfo?.isConnected == true
+        }
         val capabilities = getNetworkCapabilities(activeNetwork) ?: return false
         // On a LAN-only setup the stick may have Wi-Fi but no internet validation; TRANSPORT presence
         // is what matters, not NET_CAPABILITY_VALIDATED.

@@ -50,7 +50,19 @@ class LibTorrentEngine @Inject constructor(
     @ApplicationScope private val scope: CoroutineScope,
 ) : TorrentEngine {
 
-    private val session = SessionManager()
+    /**
+     * Created on first use, never in the constructor.
+     *
+     * Constructing a [SessionManager] runs libtorrent's static initialiser, which loads
+     * `libtorrent4j.so`. Hilt builds this singleton on the main thread during `MainActivity.onCreate`,
+     * so a device whose ABI is missing from the APK — or whose loader rejects the library — used to
+     * die with a `LinkageError` before a single frame was drawn, with no way to catch it.
+     */
+    private val sessionRef: SessionManager by lazy { SessionManager() }
+
+    /** Turns any native-loading failure into the app's own typed error instead of a [LinkageError]. */
+    private val session: SessionManager
+        get() = runCatching { sessionRef }.getOrElse { throw TorrentError.EngineUnavailable(it) }
     private val sessionMutex = Mutex()
     private val streamServer = TorrentStreamServer()
     /** Streaming *and* seeding torrents; a torrent leaves this map only when it is removed. */

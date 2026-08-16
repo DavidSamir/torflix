@@ -48,8 +48,8 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (providers.environmentVariable("TORFILX_KEYSTORE").isPresent) {
                 signingConfigs.getByName("release")
@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.okhttp.core)
 
     testImplementation(projects.core.testing)
     androidTestImplementation(projects.core.testing)

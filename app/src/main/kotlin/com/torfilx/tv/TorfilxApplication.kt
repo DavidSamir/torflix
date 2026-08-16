@@ -6,6 +6,8 @@ import android.content.ComponentCallbacks2
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.util.Logger
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.request.bitmapConfig
@@ -17,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import dagger.hilt.android.HiltAndroidApp
+import com.torfilx.tv.net.trustModernCertificateAuthorities
+import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
 
 private const val TAG = "App"
@@ -53,6 +57,22 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
+            // Registered by hand rather than left to Coil's ServiceLoader discovery: the loader
+            // reads META-INF/services entries, and when they go missing every poster silently falls
+            // back to its placeholder with nothing in the log to say why.
+            .components { add(OkHttpNetworkFetcherFactory(callFactory = { imageHttpClient })) }
+            // Poster failures are otherwise invisible — a blank card looks identical whether the
+            // host is unreachable, the TLS handshake failed, or the URL is simply wrong.
+            .logger(
+                object : Logger {
+                    override var minLevel: Logger.Level = Logger.Level.Warn
+
+                    override fun log(tag: String, level: Logger.Level, message: String?, throwable: Throwable?) {
+                        if (level < minLevel) return
+                        TorfilxLog.w("Image/$tag", message ?: throwable?.message.orEmpty(), throwable)
+                    }
+                },
+            )
             // Posters decode as RGB_565: half the memory of ARGB_8888, and the banding is invisible
             // on a TV. On a 1.5 GB stick that is the difference between a smooth row and a GC pause
             // every few cards.
@@ -78,6 +98,18 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
             TorfilxLog.i(TAG, "Trimming image memory cache (level=$level)")
             SingletonImageLoader.get(this).memoryCache?.clear()
         }
+    }
+
+    /**
+     * The client posters are fetched with.
+     *
+     * Built lazily so the CA bundle is parsed on whichever background thread first needs an image,
+     * never during startup on the main thread.
+     */
+    private val imageHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .trustModernCertificateAuthorities(this)
+            .build()
     }
 
     /** Low-RAM devices (1.5 GB Fire Sticks) get a smaller share of a much smaller heap. */
