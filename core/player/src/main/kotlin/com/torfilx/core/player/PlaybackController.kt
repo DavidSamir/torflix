@@ -19,11 +19,8 @@ import com.torfilx.core.data.settings.SettingsRepository
 import com.torfilx.core.data.torrent.TorrentCoordinator
 import com.torfilx.core.torrent.TorrentError
 import com.torfilx.core.model.AppSettings
-import com.torfilx.core.model.Episode
 import com.torfilx.core.model.MediaItem as DomainMediaItem
-import com.torfilx.core.model.NextEpisodeSelector
 import com.torfilx.core.model.ResumeRules
-import com.torfilx.core.model.ShowDetails
 import com.torfilx.core.model.SourceKind
 import com.torfilx.core.model.SourceSelector
 import com.torfilx.core.model.SubtitleFormat
@@ -70,11 +67,8 @@ class PlaybackController @Inject constructor(
         private set
 
     private var resolved: ResolvedPlayback? = null
-    private var showDetails: ShowDetails? = null
     private var settings: AppSettings = AppSettings()
     private var positionJob: Job? = null
-    private var countdownJob: Job? = null
-    private var consecutiveAutoplays: Int = 0
     private var lastUserInputMs: Long = 0L
     private var lastSavedPositionMs: Long = -1L
     private var pausedForAudioFocus: Boolean = false
@@ -166,18 +160,10 @@ class PlaybackController @Inject constructor(
             return
         }
 
-        val episode = mediaRepository.episode(request.playableId)
-        val item = when {
-            episode != null -> mediaRepository.item(episode.showId)
-            else -> mediaRepository.item(request.playableId)
-        }
-        showDetails = (request.showId ?: episode?.showId)?.let { showId ->
-            runCatching { mediaRepository.observeShowDetails(showId).first() }.getOrNull()
-        }
+        val item = mediaRepository.item(request.playableId)
 
         val storedProgress = progressRepository.get(request.playableId)
         val durationMs = info.durationMs
-            ?: episode?.runtimeMs
             ?: item?.runtimeMs
             ?: storedProgress?.durationMs
             ?: 0L
@@ -186,9 +172,7 @@ class PlaybackController @Inject constructor(
 
         resolved = ResolvedPlayback(
             playableId = request.playableId,
-            showId = request.showId ?: episode?.showId,
             item = item,
-            episode = episode,
             subtitles = info.subtitles,
             audio = info.audioTracks,
             markers = info.markers,
@@ -229,20 +213,12 @@ class PlaybackController @Inject constructor(
             isLoading = false,
             error = null,
             title = item?.title.orEmpty(),
-            subtitle = episode?.let { ep ->
-                buildString {
-                    append("S${ep.seasonNumber}:E${ep.episodeNumber}")
-                    ep.title?.let { append(" · $it") }
-                }
-            },
             item = item,
-            episode = episode,
             durationMs = durationMs,
             positionMs = startPosition,
             markers = info.markers,
             spriteSheet = info.spriteSheet,
             isTranscoding = source.kind == SourceKind.HLS,
-            nextEpisode = nextEpisode(),
             subtitlesEnabled = settings.subtitlesEnabledByDefault,
         )
         lastUserInputMs = System.currentTimeMillis()
@@ -322,8 +298,7 @@ class PlaybackController @Inject constructor(
         lastUserInputMs = System.currentTimeMillis()
         if (_state.value.showStillWatching) {
             _state.value = _state.value.copy(showStillWatching = false)
-            consecutiveAutoplays = 0
-            player?.play()
+                player?.play()
         }
     }
 
@@ -510,7 +485,6 @@ class PlaybackController @Inject constructor(
                 itemId = info.playableId,
                 positionMs = position,
                 durationMs = duration,
-                showId = info.showId,
             )
         }
     }
@@ -525,8 +499,6 @@ class PlaybackController @Inject constructor(
         }
         positionJob?.cancel()
         positionJob = null
-        countdownJob?.cancel()
-        countdownJob = null
         val exo = player
         if (release && exo != null) {
             exo.removeListener(listener)
@@ -537,56 +509,7 @@ class PlaybackController @Inject constructor(
         }
         _state.value = PlayerUiState(isLoading = false)
         resolved = null
-        showDetails = null
-        consecutiveAutoplays = 0
         lastSavedPositionMs = -1L
-    }
-
-    // --- Episodes -------------------------------------------------------------------------------
-
-    private fun nextEpisode(): Episode? {
-        val details = showDetails ?: return null
-        val currentId = resolved?.playableId ?: return null
-        return NextEpisodeSelector.nextEpisodeAfter(details, currentId)
-    }
-
-    private fun startNextEpisodeCountdown() {
-        if (!settings.autoplayNextEpisode) {
-            _state.value = _state.value.copy(nextEpisodeCountdownSeconds = null)
-            return
-        }
-        countdownJob = scope.launch {
-            for (second in NEXT_EPISODE_COUNTDOWN_SECONDS downTo 1) {
-                _state.value = _state.value.copy(nextEpisodeCountdownSeconds = second)
-                delay(1_000)
-            }
-            _state.value = _state.value.copy(nextEpisodeCountdownSeconds = null)
-            playNextEpisode(automatic = true)
-        }
-    }
-
-    fun cancelNextEpisodeCountdown() {
-        countdownJob?.cancel()
-        countdownJob = null
-        _state.value = _state.value.copy(nextEpisodeCountdownSeconds = null)
-    }
-
-    fun playNextEpisode(automatic: Boolean = false) {
-        val next = _state.value.nextEpisode ?: return
-        cancelNextEpisodeCountdown()
-        consecutiveAutoplays = if (automatic) consecutiveAutoplays + 1 else 0
-        scope.launch {
-            open(PlaybackRequest(playableId = next.id, showId = next.showId, startPositionMs = 0L))
-        }
-    }
-
-    fun playPreviousEpisode() {
-        val details = showDetails ?: return
-        val currentId = resolved?.playableId ?: return
-        val previous = NextEpisodeSelector.previousEpisodeBefore(details, currentId) ?: return
-        scope.launch {
-            open(PlaybackRequest(playableId = previous.id, showId = previous.showId))
-        }
     }
 
     fun skipIntro() {
@@ -601,9 +524,6 @@ class PlaybackController @Inject constructor(
             // Mark fully watched so the item leaves Continue Watching immediately.
             progressRepository.markWatched(info.playableId, info.durationMs, watched = true)
         }
-        if (_state.value.nextEpisode != null && settings.autoplayNextEpisode) {
-            playNextEpisode(automatic = true)
-        }
     }
 
     /**
@@ -613,8 +533,7 @@ class PlaybackController @Inject constructor(
     private fun maybeShowStillWatching() {
         if (_state.value.showStillWatching) return
         val idleMs = System.currentTimeMillis() - lastUserInputMs
-        val trigger = consecutiveAutoplays >= STILL_WATCHING_EPISODES ||
-            idleMs >= STILL_WATCHING_IDLE_MS
+        val trigger = idleMs >= STILL_WATCHING_IDLE_MS
         if (trigger && _state.value.isPlaying) {
             player?.pause()
             _state.value = _state.value.copy(showStillWatching = true)
@@ -623,7 +542,6 @@ class PlaybackController @Inject constructor(
 
     fun dismissStillWatching(continueWatching: Boolean) {
         _state.value = _state.value.copy(showStillWatching = false)
-        consecutiveAutoplays = 0
         lastUserInputMs = System.currentTimeMillis()
         if (continueWatching) player?.play() else stop(release = false)
     }
@@ -757,8 +675,6 @@ class PlaybackController @Inject constructor(
     private companion object {
         const val TICK_INTERVAL_MS = 500L
         const val SAVE_INTERVAL_MS = 10_000L
-        const val NEXT_EPISODE_COUNTDOWN_SECONDS = 10
-        const val STILL_WATCHING_EPISODES = 3
         const val STILL_WATCHING_IDLE_MS = 3 * 60 * 60 * 1000L
     }
 }

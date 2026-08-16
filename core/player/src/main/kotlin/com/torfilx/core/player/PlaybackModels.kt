@@ -1,7 +1,6 @@
 package com.torfilx.core.player
 
 import com.torfilx.core.model.AudioTrackInfo
-import com.torfilx.core.model.Episode
 import com.torfilx.core.model.Markers
 import com.torfilx.core.model.MediaItem
 import com.torfilx.core.model.SpriteSheet
@@ -9,9 +8,8 @@ import com.torfilx.core.model.SubtitleTrack
 
 /** What the UI asks the player to open. */
 data class PlaybackRequest(
-    /** Movie id, or episode id when playing a show. */
+    /** Catalogue item id. */
     val playableId: String,
-    val showId: String? = null,
     /**
      * Explicit source choice from the details screen.
      *
@@ -69,7 +67,6 @@ data class PlayerUiState(
     val title: String = "",
     val subtitle: String? = null,
     val item: MediaItem? = null,
-    val episode: Episode? = null,
     val audioTracks: List<TrackOption> = emptyList(),
     val subtitleTracks: List<TrackOption> = emptyList(),
     val subtitlesEnabled: Boolean = false,
@@ -79,8 +76,6 @@ data class PlayerUiState(
     val playbackSpeed: Float = 1f,
     val error: PlaybackError? = null,
     val showSkipIntro: Boolean = false,
-    val nextEpisode: Episode? = null,
-    val nextEpisodeCountdownSeconds: Int? = null,
     val showStillWatching: Boolean = false,
     val isTranscoding: Boolean = false,
     /** Set while a display mode switch settles, so the UI can stay black instead of flashing. */
@@ -93,9 +88,7 @@ data class PlayerUiState(
 /** Source data resolved for the current item, kept for retries and track mapping. */
 internal data class ResolvedPlayback(
     val playableId: String,
-    val showId: String?,
     val item: MediaItem?,
-    val episode: Episode?,
     val subtitles: List<SubtitleTrack>,
     val audio: List<AudioTrackInfo>,
     val markers: Markers,
