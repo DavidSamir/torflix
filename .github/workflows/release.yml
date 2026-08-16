@@ -109,4 +109,4 @@ jobs:
             adb install -r torfilx-release.apk
             ```
 
-            Requires Fire OS 6 or later (Android 6.0 / API 23). Signed with v1 + v2 schemes.
+            Runs on Fire OS 5 and later (Android 5.1 / API 22). Signed with v1 + v2 schemes.
