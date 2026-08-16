@@ -13,7 +13,6 @@ import androidx.room.RoomDatabase
         ProgressEntity::class,
         MyListEntity::class,
         SearchHistoryEntity::class,
-        SyncMarkerEntity::class,
     ],
     version = 1,
     exportSchema = true,
@@ -22,7 +21,6 @@ abstract class TorfilxDatabase : RoomDatabase() {
     abstract fun progressDao(): ProgressDao
     abstract fun myListDao(): MyListDao
     abstract fun searchHistoryDao(): SearchHistoryDao
-    abstract fun syncMarkerDao(): SyncMarkerDao
 
     companion object {
         const val NAME = "torfilx.db"

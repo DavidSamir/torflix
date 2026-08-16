@@ -6,7 +6,6 @@ import com.torfilx.core.data.database.MyListDao
 import com.torfilx.core.data.database.TorfilxDatabase
 import com.torfilx.core.data.database.ProgressDao
 import com.torfilx.core.data.database.SearchHistoryDao
-import com.torfilx.core.data.database.SyncMarkerDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -37,8 +36,6 @@ object DatabaseModule {
     fun providesSearchHistoryDao(database: TorfilxDatabase): SearchHistoryDao =
         database.searchHistoryDao()
 
-    @Provides
-    fun providesSyncMarkerDao(database: TorfilxDatabase): SyncMarkerDao = database.syncMarkerDao()
 }
 
 /**

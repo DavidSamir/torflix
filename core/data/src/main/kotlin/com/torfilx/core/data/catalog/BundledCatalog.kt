@@ -43,10 +43,8 @@ data class CatalogItem(
 /**
  * The catalogue that ships inside the app.
  *
- * It exists so the app is useful with no media server at all: the bundled titles are playable over
- * BitTorrent, while anything the server offers is merged in on top. Entries whose magnet links are
- * malformed are dropped at load time and logged — a broken magnet must never reach the player as a
- * mysterious failure.
+ * This is the only source of films in the app. Entries whose magnet links are malformed are dropped
+ * at load time and logged — a broken magnet must never reach the player as a mysterious failure.
  */
 @Singleton
 class BundledCatalog @Inject constructor(

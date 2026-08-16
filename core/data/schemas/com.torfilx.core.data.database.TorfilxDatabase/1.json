@@ -2,132 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "3539b23922c6f1ed3be70f056c31b61f",
+    "identityHash": "407c9abcae102ebc9840c19f7a209952",
     "entities": [
       {
-        "tableName": "library_items",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `sortTitle` TEXT NOT NULL, `year` INTEGER, `runtimeMs` INTEGER, `communityRating` REAL, `ageRating` TEXT, `overview` TEXT, `genres` TEXT NOT NULL, `posterUrl` TEXT, `backdropUrl` TEXT, `logoUrl` TEXT, `thumbUrl` TEXT, `addedAtMs` INTEGER, `updatedAtMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "title",
-            "columnName": "title",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "sortTitle",
-            "columnName": "sortTitle",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "year",
-            "columnName": "year",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "runtimeMs",
-            "columnName": "runtimeMs",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "communityRating",
-            "columnName": "communityRating",
-            "affinity": "REAL"
-          },
-          {
-            "fieldPath": "ageRating",
-            "columnName": "ageRating",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "overview",
-            "columnName": "overview",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "genres",
-            "columnName": "genres",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "posterUrl",
-            "columnName": "posterUrl",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "backdropUrl",
-            "columnName": "backdropUrl",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "logoUrl",
-            "columnName": "logoUrl",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "thumbUrl",
-            "columnName": "thumbUrl",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "addedAtMs",
-            "columnName": "addedAtMs",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "updatedAtMs",
-            "columnName": "updatedAtMs",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_library_items_sortTitle",
-            "unique": false,
-            "columnNames": [
-              "sortTitle"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_sortTitle` ON `${TABLE_NAME}` (`sortTitle`)"
-          },
-          {
-            "name": "index_library_items_addedAtMs",
-            "unique": false,
-            "columnNames": [
-              "addedAtMs"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_addedAtMs` ON `${TABLE_NAME}` (`addedAtMs`)"
-          },
-          {
-            "name": "index_library_items_updatedAtMs",
-            "unique": false,
-            "columnNames": [
-              "updatedAtMs"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_updatedAtMs` ON `${TABLE_NAME}` (`updatedAtMs`)"
-          }
-        ]
-      },
-      {
         "tableName": "progress",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `watched` INTEGER NOT NULL, `updatedAtMs` INTEGER NOT NULL, `syncState` TEXT NOT NULL, PRIMARY KEY(`itemId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `watched` INTEGER NOT NULL, `updatedAtMs` INTEGER NOT NULL, PRIMARY KEY(`itemId`))",
         "fields": [
           {
             "fieldPath": "itemId",
@@ -158,12 +37,6 @@
             "columnName": "updatedAtMs",
             "affinity": "INTEGER",
             "notNull": true
-          },
-          {
-            "fieldPath": "syncState",
-            "columnName": "syncState",
-            "affinity": "TEXT",
-            "notNull": true
           }
         ],
         "primaryKey": {
@@ -181,21 +54,12 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_progress_updatedAtMs` ON `${TABLE_NAME}` (`updatedAtMs`)"
-          },
-          {
-            "name": "index_progress_syncState",
-            "unique": false,
-            "columnNames": [
-              "syncState"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_progress_syncState` ON `${TABLE_NAME}` (`syncState`)"
           }
         ]
       },
       {
         "tableName": "my_list",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `addedAtMs` INTEGER NOT NULL, `syncState` TEXT NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`itemId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `addedAtMs` INTEGER NOT NULL, PRIMARY KEY(`itemId`))",
         "fields": [
           {
             "fieldPath": "itemId",
@@ -206,18 +70,6 @@
           {
             "fieldPath": "addedAtMs",
             "columnName": "addedAtMs",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "syncState",
-            "columnName": "syncState",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "deleted",
-            "columnName": "deleted",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -237,15 +89,6 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_my_list_addedAtMs` ON `${TABLE_NAME}` (`addedAtMs`)"
-          },
-          {
-            "name": "index_my_list_syncState",
-            "unique": false,
-            "columnNames": [
-              "syncState"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_my_list_syncState` ON `${TABLE_NAME}` (`syncState`)"
           }
         ]
       },
@@ -272,40 +115,11 @@
             "query"
           ]
         }
-      },
-      {
-        "tableName": "sync_markers",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `etag` TEXT, `lastSyncedAtMs` INTEGER NOT NULL, PRIMARY KEY(`key`))",
-        "fields": [
-          {
-            "fieldPath": "key",
-            "columnName": "key",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "etag",
-            "columnName": "etag",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "lastSyncedAtMs",
-            "columnName": "lastSyncedAtMs",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "key"
-          ]
-        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3539b23922c6f1ed3be70f056c31b61f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '407c9abcae102ebc9840c19f7a209952')"
     ]
   }
 }
