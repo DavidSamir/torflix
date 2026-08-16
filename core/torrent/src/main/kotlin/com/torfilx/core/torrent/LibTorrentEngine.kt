@@ -66,9 +66,16 @@ class LibTorrentEngine @Inject constructor(
     @Volatile
     private var started = false
 
-    /** Where torrent data lives: app-private external storage, so uninstalling removes it. */
+    /**
+     * Where torrent data lives: internal app storage.
+     *
+     * Deliberately *not* `getExternalFilesDir`: that path is served by the MediaProvider FUSE daemon,
+     * which the engine.s random-access reads and writes can crash — taking the whole app down with
+     * it when the platform then kills every process touching the volume. Internal storage is plain
+     * ext4, app-private, invisible to the media scanner, and removed on uninstall.
+     */
     private val downloadDir: File by lazy {
-        File(context.getExternalFilesDir(null) ?: context.filesDir, "torrents").apply { mkdirs() }
+        File(context.filesDir, "torrents").apply { mkdirs() }
     }
 
     override fun isAvailable(): Boolean {

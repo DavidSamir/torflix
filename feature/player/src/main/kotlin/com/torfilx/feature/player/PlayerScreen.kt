@@ -41,6 +41,7 @@ import com.torfilx.core.player.AspectMode
 import com.torfilx.core.player.PlaybackError
 import com.torfilx.core.player.PlayerUiState
 import com.torfilx.core.ui.component.ErrorState
+import com.torfilx.core.ui.component.SharingConsentDialog
 import com.torfilx.core.ui.component.TvButton
 import com.torfilx.core.ui.component.TvChip
 import com.torfilx.core.ui.focus.RemoteKeys
@@ -167,6 +168,21 @@ fun PlayerScreen(
 
         if (state.isBuffering) {
             BufferingIndicator()
+        }
+
+        // "Sharing is off" is not an error to report but a decision to ask for — the same dialog the
+        // details screen shows, so every route into the player behaves identically.
+        if (state.error is PlaybackError.SharingNotEnabled) {
+            SharingConsentDialog(
+                storageSummary = "While sharing, the app keeps part of what you watch on this device " +
+                    "and uploads it to others, within the storage limit set in Settings.",
+                onAccept = viewModel::enableSharingAndRetry,
+                onDecline = {
+                    viewModel.leavePlayer()
+                    onExit()
+                },
+            )
+            return
         }
 
         state.error?.let { error ->

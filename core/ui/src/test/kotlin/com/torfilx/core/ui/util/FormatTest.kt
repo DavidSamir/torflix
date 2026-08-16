@@ -1,9 +1,7 @@
 package com.torfilx.core.ui.util
 
 import com.google.common.truth.Truth.assertThat
-import com.torfilx.core.model.Episode
 import com.torfilx.core.model.MediaItem
-import com.torfilx.core.model.MediaType
 import org.junit.Test
 
 class FormatTest {
@@ -35,25 +33,12 @@ class FormatTest {
     }
 
     @Test
-    fun `episode code uses the compact TV form`() {
-        val episode = Episode(
-            id = "e",
-            showId = "s",
-            seasonId = "s1",
-            seasonNumber = 2,
-            episodeNumber = 4,
-        )
-        assertThat(Format.episodeCode(episode)).isEqualTo("S2:E4")
-    }
-
-    @Test
     fun `meta line skips whatever the server did not provide`() {
-        val sparse = MediaItem(id = "m", type = MediaType.MOVIE, title = "Untitled")
+        val sparse = MediaItem(id = "m", title = "Untitled")
         assertThat(Format.metaLine(sparse)).isEmpty()
 
         val full = MediaItem(
             id = "m",
-            type = MediaType.MOVIE,
             title = "Movie",
             year = 2024,
             runtimeMs = 134 * minute,
@@ -61,14 +46,6 @@ class FormatTest {
             genres = listOf("Action", "Sci-Fi", "Drama"),
         )
         assertThat(Format.metaLine(full)).isEqualTo("2024 · 2h 14m · 16+ · Action, Sci-Fi")
-    }
-
-    @Test
-    fun `show meta line pluralises seasons`() {
-        val oneSeason = MediaItem(id = "s", type = MediaType.SHOW, title = "Show", seasonCount = 1)
-        val manySeasons = MediaItem(id = "s", type = MediaType.SHOW, title = "Show", seasonCount = 8)
-        assertThat(Format.metaLine(oneSeason)).contains("1 season")
-        assertThat(Format.metaLine(manySeasons)).contains("8 seasons")
     }
 
     @Test

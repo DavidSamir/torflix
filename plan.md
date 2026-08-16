@@ -1,9 +1,12 @@
 # TORFILX — Fire TV Client: Engineering Plan
 
-> Scope: **the Fire TV application only.** The local media server (scanning, metadata,
-> transcoding, storage) is a separate project. This document defines only the contract the
-> app *requires* from that server, so the app can be built against a fake/in-memory
-> implementation first and swapped to the real server later.
+> Scope: **the Fire TV application only.**
+>
+> There is no server. The library is a catalogue bundled with the app
+> (`core/data/src/main/assets/catalog.json`) and every title is streamed over BitTorrent from its
+> magnet link. Sections below that describe a media server, its HTTP API, delta sync or transcoding
+> are **historical** — they were built, then removed when the app moved to torrent-only. They are
+> kept because the playback, focus, storage and error-handling reasoning still applies.
 
 
 ---
@@ -399,3 +402,53 @@ Server implementation & metadata scraping · profiles · Amazon Appstore submiss
 1. HDMI-CEC / AVR setups in the household: does anything need DTS or TrueHD passthrough (affects capability report and server transcode rules)?
 2. Should "watched" state be per-device or global (only matters once a second client exists — plan is global via server, local fallback).
 3. Hebrew subtitle sources: confirm the server will normalise encodings to UTF-8 VTT; otherwise the app needs a charset-sniffing subtitle loader (avoidable — don't do it in the app).
+
+---
+
+## 17. Final architecture (torrent-only)
+
+The media-server layer described in §3, §8.2 and §11 has been **removed**. What runs now:
+
+```
+assets/catalog.json ──▶ BundledCatalog ──▶ MediaRepository ──▶ Home / Movies / Search / Details
+   (titles + magnets)      (validates)          │
+                                                ├── ProgressRepository  (Room: resume, watched)
+                                                └── MyListRepository    (Room: saved titles)
+
+Details ──▶ consent gate ──▶ TorrentCoordinator ──▶ LibTorrentEngine ──▶ loopback HTTP ──▶ ExoPlayer
+```
+
+- `:core:network` is deleted. No Retrofit, no OkHttp API client, no server URL, no API token, no
+  ETag/delta sync, no WorkManager outbox — none of it has anything to talk to.
+- Room holds **only local state**: `progress`, `my_list`, `search_history`. The films themselves are
+  never stored in the database; the catalogue is the source of truth.
+- There are **no TV shows**. Seasons, episodes, next-episode/autoplay and the episode list are gone
+  from the model, the player and the UI.
+- `SourceSelector` may now choose a torrent automatically (it is the only delivery mechanism);
+  consent is enforced one layer lower, in the engine, so selecting a source never starts an upload.
+
+### Verified end-to-end on an Android TV emulator
+
+| Step | Result |
+|---|---|
+| Catalogue load + validation | 2 titles; malformed magnets dropped with a log line |
+| Home / rows / focus / Back on every screen | Working; Back from a tab returns Home |
+| Sharing consent gate (details **and** player entry points) | Shown before any byte moves; "Not now" leaves cleanly |
+| Magnet → metadata → sequential download | ~70 MB fetched in the first minute |
+| **Actual playback** | *The Kid* (1921) played; `state=PLAYING(3), position=93970` |
+| Exit → progress saved | Continue Watching row appears, hero button becomes "Resume" |
+
+### One more bug found by running it
+
+**Torrent data must not live on external storage.** With the download directory under
+`getExternalFilesDir(...)`, the platform's MediaProvider FUSE daemon aborted on the engine's
+random-access I/O (`mediaprovider::fuse::pf_open` → `SIGABRT`), after which `vold` killed *every*
+process touching `/storage/emulated/0` — including the app, every single time playback started. Data
+now lives in internal storage (`filesDir/torrents`): plain ext4, app-private, not media-scanned.
+
+### Known gaps
+
+- Seeding only runs while the app is alive; background seeding needs a foreground service.
+- Resume data (`saveResumeData`) is not persisted, so a restart re-checks pieces already on disk.
+- Throughput was measured inside the emulator's NAT; a real Fire TV on a home LAN is the meaningful
+  performance test, along with the codec matrix on real hardware (§12).

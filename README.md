@@ -1,6 +1,6 @@
 # TORFILX
 
-A Netflix-style Fire TV app whose entire library is a **bundled catalogue of public-domain films**,
+A Netflix-style Fire TV app whose entire library is a **bundled catalogue of public-domain films**, played over BitTorrent. There is no media server and no backend.
 played over BitTorrent. There is no media server and no backend: the app ships the catalogue, streams
 each title from its magnet link, and (with the viewer's consent) shares what it has downloaded.
 
