@@ -135,6 +135,9 @@ interface ProgressDao {
     @Query("SELECT * FROM progress")
     fun observeEverything(): Flow<List<ProgressEntity>>
 
+    @Query("SELECT * FROM progress")
+    suspend fun all(): List<ProgressEntity>
+
     @Query("SELECT * FROM progress WHERE showId = :showId")
     suspend fun getForShow(showId: String): List<ProgressEntity>
 
@@ -173,6 +176,12 @@ interface MyListDao {
 
     @Query("SELECT * FROM my_list WHERE syncState != 'SYNCED'")
     suspend fun pending(): List<MyListEntity>
+
+    @Query("SELECT itemId FROM my_list")
+    suspend fun allIds(): List<String>
+
+    @Query("SELECT itemId FROM my_list WHERE syncState = 'SYNCED' AND deleted = 0")
+    suspend fun syncedIds(): List<String>
 
     @Query("UPDATE my_list SET syncState = :state WHERE itemId = :itemId")
     suspend fun markSyncState(itemId: String, state: String)
