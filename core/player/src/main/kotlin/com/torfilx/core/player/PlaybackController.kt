@@ -448,21 +448,12 @@ class PlaybackController @Inject constructor(
         val markers = _state.value.markers
 
         val showSkip = markers.intro?.contains(position) == true
-        val creditsStart = markers.creditsStartMs
-        val nextEpisode = _state.value.nextEpisode
-        val shouldCountdown = creditsStart != null &&
-            position >= creditsStart &&
-            nextEpisode != null &&
-            exo.isPlaying
-
         _state.value = _state.value.copy(
             positionMs = position,
             bufferedPositionMs = exo.bufferedPosition,
             durationMs = duration,
             showSkipIntro = showSkip,
         )
-
-        if (shouldCountdown && countdownJob == null) startNextEpisodeCountdown()
 
         if (position - lastSavedPositionMs >= SAVE_INTERVAL_MS || lastSavedPositionMs < 0) {
             saveProgress(force = false)
@@ -576,7 +567,6 @@ class PlaybackController @Inject constructor(
                 open(
                     PlaybackRequest(
                         playableId = info.playableId,
-                        showId = info.showId,
                         startPositionMs = _state.value.positionMs,
                     ),
                 )
@@ -610,7 +600,6 @@ class PlaybackController @Inject constructor(
             open(
                 PlaybackRequest(
                     playableId = info.playableId,
-                    showId = info.showId,
                     startPositionMs = _state.value.positionMs,
                 ),
             )
