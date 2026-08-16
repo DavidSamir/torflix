@@ -9,7 +9,7 @@ import com.torfilx.core.model.HeroItem
 import com.torfilx.core.model.HomeRow
 import com.torfilx.core.model.HomeRowKind
 import com.torfilx.core.model.MediaCard
-import com.torfilx.core.model.NextEpisodeSelector
+import com.torfilx.core.model.PlayActionResolver
 import com.torfilx.core.model.PlayAction
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -75,7 +75,7 @@ class HomeViewModel @Inject constructor(
 
     /** What pressing Play on a card should do, resolved from local progress. */
     suspend fun playActionFor(card: MediaCard): PlayAction =
-        NextEpisodeSelector.movieAction(card.item, progressRepository.get(card.item.id))
+        PlayActionResolver.actionFor(card.item, progressRepository.get(card.item.id))
 
     private fun heroItems(rows: List<HomeRow>): List<HeroItem> {
         // Continue Watching first — the most likely thing the viewer wants — then the catalogue.
@@ -84,7 +84,7 @@ class HomeViewModel @Inject constructor(
         return source?.items.orEmpty().take(HERO_COUNT).map { card ->
             HeroItem(
                 card = card,
-                action = NextEpisodeSelector.movieAction(card.item, card.progress),
+                action = PlayActionResolver.actionFor(card.item, card.progress),
             )
         }
     }

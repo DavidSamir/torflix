@@ -27,7 +27,6 @@ import com.torfilx.feature.settings.SettingsScreen
 object Routes {
     const val HOME = "home"
     const val MOVIES = "movies"
-    const val SHOWS = "shows"
     const val MY_LIST = "my-list"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
@@ -56,7 +55,7 @@ object Routes {
     }
 
     /** The tab destinations that the top bar switches between. */
-    val TOP_LEVEL = setOf(HOME, MOVIES, SHOWS, MY_LIST, SEARCH, SETTINGS)
+    val TOP_LEVEL = setOf(HOME, MOVIES, MY_LIST, SEARCH, SETTINGS)
 }
 
 private const val TRANSITION_MS = 200
@@ -100,10 +99,6 @@ fun TorfilxNavHost(
 
         composable(Routes.MOVIES) {
             LibraryScreen(mode = LibraryMode.MOVIES, onOpenDetails = openDetails)
-        }
-
-        composable(Routes.SHOWS) {
-            LibraryScreen(mode = LibraryMode.SHOWS, onOpenDetails = openDetails)
         }
 
         composable(Routes.MY_LIST) {

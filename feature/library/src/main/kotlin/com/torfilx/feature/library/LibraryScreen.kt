@@ -87,7 +87,6 @@ fun LibraryScreen(
                 title = when (state.mode) {
                     LibraryMode.MY_LIST -> "My List is empty"
                     LibraryMode.MOVIES -> "No movies match these filters"
-                    LibraryMode.SHOWS -> "No shows match these filters"
                 },
                 message = when (state.mode) {
                     LibraryMode.MY_LIST -> "Press the Menu button on any title to add it here."

@@ -11,7 +11,6 @@ import com.torfilx.core.data.repository.ProgressRepository
 import com.torfilx.core.model.LibraryQuery
 import com.torfilx.core.model.LibrarySort
 import com.torfilx.core.model.MediaCard
-import com.torfilx.core.model.MediaType
 import com.torfilx.core.model.WatchedFilter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,7 +26,7 @@ import javax.inject.Inject
 private const val TAG = "Library"
 
 /** Browse mode: the Movies tab, the Shows tab, or My List (same grid, different source). */
-enum class LibraryMode { MOVIES, SHOWS, MY_LIST }
+enum class LibraryMode { MOVIES, MY_LIST }
 
 data class LibraryUiState(
     val mode: LibraryMode = LibraryMode.MOVIES,
@@ -59,11 +58,7 @@ class LibraryViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val cards = combine(mode, query) { currentMode, currentQuery ->
-        currentMode to when (currentMode) {
-            LibraryMode.MOVIES -> currentQuery.copy(type = MediaType.MOVIE)
-            LibraryMode.SHOWS -> currentQuery.copy(type = MediaType.SHOW)
-            LibraryMode.MY_LIST -> currentQuery.copy(type = null)
-        }
+        currentMode to currentQuery
     }.flatMapLatest { (currentMode, effectiveQuery) ->
         val source = mediaRepository.observeLibrary(effectiveQuery)
         if (currentMode == LibraryMode.MY_LIST) {
