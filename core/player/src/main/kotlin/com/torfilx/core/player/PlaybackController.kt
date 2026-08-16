@@ -716,11 +716,9 @@ class PlaybackController @Inject constructor(
     val currentFrameRate: Float? get() = resolved?.frameRate
 
     private fun DataError.toPlaybackError(): PlaybackError = when (this) {
-        is DataError.Unauthorized -> PlaybackError.Unauthorized("The server rejected this device's token.")
-        is DataError.NotFound -> PlaybackError.NotFound("This item is no longer on the server.")
-        is DataError.ServerUnreachable, is DataError.Timeout ->
-            PlaybackError.Network("Can't reach the media server.")
-        is DataError.NotConfigured -> PlaybackError.Network("No media server is configured.", retryable = false)
+        is DataError.NotFound -> PlaybackError.NotFound("This title is not in the catalogue.")
+        is DataError.Unreachable, is DataError.Timeout ->
+            PlaybackError.Network("The network is unreachable.")
         else -> PlaybackError.Unknown(message ?: "Playback could not be started.")
     }
 

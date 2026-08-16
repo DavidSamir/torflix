@@ -186,9 +186,9 @@ class DetailsViewModel @Inject constructor(
     }
 
     private fun errorMessage(error: DataError): String = when (error) {
-        is DataError.NotFound -> "This item is no longer on the server."
-        is DataError.Unauthorized -> "The server rejected this device — check Settings."
-        else -> "Can't reach the media server."
+        is DataError.NotFound -> "This title is not in the catalogue."
+        is DataError.Malformed -> "The catalogue entry for this title is not valid."
+        else -> "This title could not be loaded."
     }
 
     companion object {
