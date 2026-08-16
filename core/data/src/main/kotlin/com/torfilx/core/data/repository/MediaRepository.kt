@@ -50,7 +50,6 @@ class MediaRepository @Inject constructor(
         myListRepository.itemIds,
     ) { progress, myList ->
         catalogItems()
-            .filter { item -> query.type == null || item.type == query.type }
             .filter { item -> query.genre == null || query.genre in item.genres }
             .sortedWith(query.sort.comparator())
             .map { item ->

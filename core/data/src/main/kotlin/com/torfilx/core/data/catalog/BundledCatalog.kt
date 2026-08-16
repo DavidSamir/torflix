@@ -6,7 +6,6 @@ import com.torfilx.core.model.HdrType
 import com.torfilx.core.model.Images
 import com.torfilx.core.model.MediaItem
 import com.torfilx.core.model.MediaSource
-import com.torfilx.core.model.MediaType
 import com.torfilx.core.model.SourceKind
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.SerialName
@@ -99,8 +98,7 @@ class BundledCatalog @Inject constructor(
             CatalogItem(
                 item = MediaItem(
                     id = id,
-                    type = MediaType.MOVIE,
-                    title = title,
+                                    title = title,
                     sortTitle = title.removePrefix("The ").trim(),
                     year = entry.year?.filter { it.isDigit() }?.toIntOrNull(),
                     runtimeMs = entry.runtimeMinutes?.let { it * 60_000L },

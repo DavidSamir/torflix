@@ -1,24 +1,14 @@
 package com.torfilx.core.data.repository
 
-import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.common.time.TimeProvider
 import com.torfilx.core.data.database.MyListDao
 import com.torfilx.core.data.database.MyListEntity
-import com.torfilx.core.data.database.SyncState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val TAG = "MyList"
-
-/**
- * My List, local-first with tombstones.
- *
- * A removal is stored as a tombstone rather than a delete so the removal can still be pushed to the
- * server after the app restarts; without it, a delete made while offline would silently come back on
- * the next sync (plan.md §8.2).
- */
+/** My List, stored on the device. Ordered most-recently-added first. */
 @Singleton
 class MyListRepository @Inject constructor(
     private val myListDao: MyListDao,
@@ -29,30 +19,14 @@ class MyListRepository @Inject constructor(
 
     fun observeEntries(): Flow<List<MyListEntity>> = myListDao.observeAll()
 
-    suspend fun isInList(itemId: String): Boolean =
-        myListDao.get(itemId)?.let { !it.deleted } ?: false
+    suspend fun isInList(itemId: String): Boolean = myListDao.get(itemId) != null
 
     suspend fun add(itemId: String) {
-        myListDao.upsert(
-            MyListEntity(
-                itemId = itemId,
-                addedAtMs = timeProvider.writeTimestampMs(),
-                syncState = SyncState.SYNCED.name,
-                deleted = false,
-            ),
-        )
+        myListDao.upsert(MyListEntity(itemId = itemId, addedAtMs = timeProvider.writeTimestampMs()))
     }
 
     suspend fun remove(itemId: String) {
-        val existing = myListDao.get(itemId)
-        myListDao.upsert(
-            MyListEntity(
-                itemId = itemId,
-                addedAtMs = existing?.addedAtMs ?: timeProvider.writeTimestampMs(),
-                syncState = SyncState.SYNCED.name,
-                deleted = true,
-            ),
-        )
+        myListDao.hardDelete(itemId)
     }
 
     suspend fun toggle(itemId: String): Boolean {
@@ -60,5 +34,4 @@ class MyListRepository @Inject constructor(
         if (nowInList) add(itemId) else remove(itemId)
         return nowInList
     }
-
 }
