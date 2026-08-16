@@ -47,11 +47,14 @@ import com.torfilx.core.ui.theme.TorfilxColors
 @Composable
 fun SearchScreen(
     onOpenDetails: (String) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val dimens = LocalTorfilxDimens.current
+
+    androidx.activity.compose.BackHandler(enabled = true) { onBack() }
     var layout by remember { mutableStateOf(KeyboardLayout.LATIN) }
     val firstKeyFocus = remember { FocusRequester() }
 

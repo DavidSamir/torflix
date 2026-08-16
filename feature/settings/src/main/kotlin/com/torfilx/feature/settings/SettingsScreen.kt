@@ -40,14 +40,21 @@ private enum class EditingField { NONE, AUDIO_LANGUAGE, SUBTITLE_LANGUAGE }
 
 @Composable
 fun SettingsScreen(
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val dimens = LocalTorfilxDimens.current
+
     var editing by remember { mutableStateOf(EditingField.NONE) }
     var buffer by remember { mutableStateOf("") }
     var keyboardLayout by remember { mutableStateOf(KeyboardLayout.LATIN) }
+
+    // Back closes the text editor first, then leaves the screen.
+    androidx.activity.compose.BackHandler(enabled = true) {
+        if (editing != EditingField.NONE) editing = EditingField.NONE else onBack()
+    }
 
     fun startEditing(field: EditingField, initial: String) {
         editing = field

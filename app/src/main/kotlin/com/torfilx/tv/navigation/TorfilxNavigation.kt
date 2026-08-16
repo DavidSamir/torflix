@@ -32,23 +32,19 @@ object Routes {
     const val SETTINGS = "settings"
     const val DETAILS = "details/{${DetailsViewModel.ARG_ITEM_ID}}"
     const val PLAYER =
-        "player/{${PlayerViewModel.ARG_PLAYABLE_ID}}?showId={${PlayerViewModel.ARG_SHOW_ID}}" +
-            "&startPositionMs={${PlayerViewModel.ARG_START_POSITION}}" +
+        "player/{${PlayerViewModel.ARG_PLAYABLE_ID}}?startPositionMs={${PlayerViewModel.ARG_START_POSITION}}" +
             "&sourceId={${PlayerViewModel.ARG_SOURCE_ID}}"
 
     fun details(itemId: String) = "details/$itemId"
 
     fun player(
         playableId: String,
-        showId: String? = null,
         startPositionMs: Long? = null,
         sourceId: String? = null,
     ) = buildString {
         append("player/")
         append(playableId)
-        append("?showId=")
-        append(showId.orEmpty())
-        append("&startPositionMs=")
+        append("?startPositionMs=")
         append(startPositionMs ?: -1L)
         append("&sourceId=")
         append(sourceId.orEmpty())
@@ -68,16 +64,16 @@ fun TorfilxNavHost(
 ) {
     val openDetails: (String) -> Unit = { itemId -> navController.navigate(Routes.details(itemId)) }
 
+    /**
+     * Playing from a card or the hero opens the film with no explicit source, so the player picks
+     * the best available quality; the details screen is where a specific quality can be chosen.
+     */
     val play: (PlayAction) -> Unit = { action ->
         when (action) {
             PlayAction.Unavailable -> Unit
-            is PlayAction.PlayMovie -> navController.navigate(Routes.player(action.itemId, null, 0L))
-            is PlayAction.ResumeMovie ->
-                navController.navigate(Routes.player(action.itemId, null, action.positionMs))
-
-            is PlayAction.PlayEpisode -> navController.navigate(
-                Routes.player(action.episode.id, action.episode.showId, action.positionMs),
-            )
+            is PlayAction.Play -> navController.navigate(Routes.player(action.itemId, 0L))
+            is PlayAction.Resume ->
+                navController.navigate(Routes.player(action.itemId, action.positionMs))
         }
     }
 
@@ -91,26 +87,36 @@ fun TorfilxNavHost(
         popExitTransition = { fadeOut(tween(TRANSITION_MS)) },
     ) {
         composable(Routes.HOME) {
-            HomeScreen(
-                onOpenDetails = openDetails,
-                onPlay = play,
-            )
+            HomeScreen(onOpenDetails = openDetails, onPlay = play)
         }
 
         composable(Routes.MOVIES) {
-            LibraryScreen(mode = LibraryMode.MOVIES, onOpenDetails = openDetails)
+            LibraryScreen(
+                mode = LibraryMode.MOVIES,
+                onOpenDetails = openDetails,
+                onBack = { navController.navigate(Routes.HOME) { popUpTo(Routes.HOME) } },
+            )
         }
 
         composable(Routes.MY_LIST) {
-            LibraryScreen(mode = LibraryMode.MY_LIST, onOpenDetails = openDetails)
+            LibraryScreen(
+                mode = LibraryMode.MY_LIST,
+                onOpenDetails = openDetails,
+                onBack = { navController.navigate(Routes.HOME) { popUpTo(Routes.HOME) } },
+            )
         }
 
         composable(Routes.SEARCH) {
-            SearchScreen(onOpenDetails = openDetails)
+            SearchScreen(
+                onOpenDetails = openDetails,
+                onBack = { navController.navigate(Routes.HOME) { popUpTo(Routes.HOME) } },
+            )
         }
 
         composable(Routes.SETTINGS) {
-            SettingsScreen()
+            SettingsScreen(
+                onBack = { navController.navigate(Routes.HOME) { popUpTo(Routes.HOME) } },
+            )
         }
 
         composable(
@@ -120,11 +126,10 @@ fun TorfilxNavHost(
             ),
         ) {
             DetailsScreen(
-                onPlay = play,
                 onPlaySource = { itemId, sourceId ->
                     navController.navigate(Routes.player(itemId, sourceId = sourceId))
                 },
-                onBack = { navController.popBackStack() },
+                onBack = { if (!navController.popBackStack()) onExitApp() },
             )
         }
 
@@ -132,10 +137,6 @@ fun TorfilxNavHost(
             route = Routes.PLAYER,
             arguments = listOf(
                 navArgument(PlayerViewModel.ARG_PLAYABLE_ID) { type = NavType.StringType },
-                navArgument(PlayerViewModel.ARG_SHOW_ID) {
-                    type = NavType.StringType
-                    defaultValue = ""
-                },
                 navArgument(PlayerViewModel.ARG_START_POSITION) {
                     type = NavType.LongType
                     defaultValue = -1L
@@ -150,9 +151,7 @@ fun TorfilxNavHost(
             exitTransition = { ExitTransition.None },
         ) {
             PlayerScreen(
-                onExit = {
-                    if (!navController.popBackStack()) onExitApp()
-                },
+                onExit = { if (!navController.popBackStack()) onExitApp() },
             )
         }
     }

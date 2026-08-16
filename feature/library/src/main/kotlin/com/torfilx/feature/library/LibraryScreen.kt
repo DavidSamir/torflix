@@ -45,11 +45,15 @@ import com.torfilx.core.ui.theme.TorfilxColors
 fun LibraryScreen(
     mode: LibraryMode,
     onOpenDetails: (String) -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     androidx.compose.runtime.LaunchedEffect(mode) { viewModel.setMode(mode) }
+
+    // Back from a tab returns to Home rather than exiting the app.
+    androidx.activity.compose.BackHandler(enabled = true) { onBack() }
 
     val dimens = LocalTorfilxDimens.current
     val gridState = rememberLazyGridState()
