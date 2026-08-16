@@ -28,7 +28,6 @@ import com.torfilx.core.model.HomeRowKind
 import com.torfilx.core.model.MediaCard
 import com.torfilx.core.model.PlayAction
 import com.torfilx.core.ui.component.EmptyState
-import com.torfilx.core.ui.component.ErrorState
 import com.torfilx.core.ui.component.HeroSection
 import com.torfilx.core.ui.component.MediaRow
 import com.torfilx.core.ui.component.SkeletonRow
@@ -47,7 +46,6 @@ import kotlinx.coroutines.launch
 fun HomeScreen(
     onOpenDetails: (String) -> Unit,
     onPlay: (PlayAction) -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -67,24 +65,10 @@ fun HomeScreen(
         when (val current = state) {
             HomeUiState.Loading -> HomeSkeleton()
 
-            is HomeUiState.Empty -> EmptyState(
-                title = if (current.serverConfigured) "Your library is empty" else "Connect your media server",
-                message = if (current.serverConfigured) {
-                    "Add some films or shows to the folder your server watches, then refresh."
-                } else {
-                    "Enter your server's address in Settings to start watching."
-                },
-                actionLabel = if (current.serverConfigured) "Refresh" else "Open Settings",
-                onAction = if (current.serverConfigured) viewModel::refresh else onOpenSettings,
-            )
-
-            is HomeUiState.Error -> ErrorState(
-                title = current.title,
-                message = current.message,
-                primaryActionLabel = "Retry",
-                onPrimaryAction = viewModel::refresh,
-                secondaryActionLabel = if (current.showSettingsAction) "Settings" else null,
-                onSecondaryAction = if (current.showSettingsAction) onOpenSettings else null,
+            HomeUiState.EmptyCatalog -> EmptyState(
+                title = "Nothing to watch yet",
+                message = "The bundled catalogue has no playable titles. Check that catalog.json " +
+                    "contains valid magnet links.",
             )
 
             is HomeUiState.Content -> HomeContent(
@@ -117,9 +101,6 @@ private fun HomeContent(
     }
 
     Column(Modifier.fillMaxSize()) {
-        state.staleWarning?.let { warning ->
-            StaleBanner(warning)
-        }
         LazyColumn(
             state = listState,
             modifier = Modifier
