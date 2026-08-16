@@ -7,6 +7,8 @@ import com.torfilx.core.common.error.DataError
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.data.repository.MediaRepository
 import com.torfilx.core.data.settings.SettingsRepository
+import com.torfilx.core.data.torrent.TorrentCoordinator
+import com.torfilx.core.torrent.SharingStats
 import com.torfilx.core.model.AppSettings
 import com.torfilx.core.model.ConnectionTestResult
 import com.torfilx.core.model.QualityPreference
@@ -25,6 +27,11 @@ import javax.inject.Inject
 private const val TAG = "SettingsVM"
 
 data class SettingsUiState(
+    val sharingConsent: Boolean = false,
+    val seedingEnabled: Boolean = true,
+    val storageFraction: Float = 0.5f,
+    val sharingStats: SharingStats = SharingStats(),
+    val torrentAvailable: Boolean = false,
     val settings: AppSettings = AppSettings(),
     val tokenSet: Boolean = false,
     val demoMode: Boolean = false,
@@ -38,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val mediaRepository: MediaRepository,
+    private val torrentCoordinator: TorrentCoordinator,
 ) : ViewModel() {
 
     private val connectionTest = MutableStateFlow<ConnectionTestResult?>(null)
@@ -45,13 +53,26 @@ class SettingsViewModel @Inject constructor(
     private val message = MutableStateFlow<String?>(null)
     private val tokenSet = MutableStateFlow(settingsRepository.apiToken() != null)
 
+    private val sharingState = combine(
+        settingsRepository.sharingConsent,
+        settingsRepository.seedingEnabled,
+        settingsRepository.storageFraction,
+        torrentCoordinator.stats,
+    ) { consent, seeding, fraction, stats -> SharingSnapshot(consent, seeding, fraction, stats) }
+
     val uiState: StateFlow<SettingsUiState> = combine(
         settingsRepository.settings,
         settingsRepository.demoMode,
         combine(connectionTest, testing, message) { test, isTesting, msg -> Triple(test, isTesting, msg) },
         tokenSet,
-    ) { settings, demo, (test, isTesting, msg), hasToken ->
+        sharingState,
+    ) { settings, demo, (test, isTesting, msg), hasToken, sharing ->
         SettingsUiState(
+            sharingConsent = sharing.consent,
+            seedingEnabled = sharing.seeding,
+            storageFraction = sharing.fraction,
+            sharingStats = sharing.stats,
+            torrentAvailable = torrentCoordinator.isAvailable(),
             settings = settings,
             tokenSet = hasToken,
             demoMode = demo,
@@ -60,6 +81,43 @@ class SettingsViewModel @Inject constructor(
             message = msg,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), SettingsUiState())
+
+    private data class SharingSnapshot(
+        val consent: Boolean,
+        val seeding: Boolean,
+        val fraction: Float,
+        val stats: SharingStats,
+    )
+
+    /**
+     * Turning sharing off stops uploading immediately; the engine is shut down by the coordinator.
+     */
+    fun setSharingConsent(consented: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setSharingConsent(consented)
+            message.value = if (consented) {
+                "Sharing is on. You upload only what you are watching, within the storage limit."
+            } else {
+                "Sharing is off. Torrent playback is disabled; the server still works."
+            }
+        }
+    }
+
+    fun setSeedingEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setSeedingEnabled(enabled) }
+    }
+
+    /** Cycles the share of free disk the torrent cache may use. */
+    fun cycleStorageFraction() {
+        viewModelScope.launch {
+            val next = when (uiState.value.storageFraction) {
+                0.25f -> 0.5f
+                0.5f -> 0.75f
+                else -> 0.25f
+            }
+            settingsRepository.setStorageFraction(next)
+        }
+    }
 
     fun setServerUrl(url: String) {
         viewModelScope.launch {

@@ -6,7 +6,18 @@
     "magnets": [
       {
         "quality": "720p",
-        "magnet": "magnet:?xt=urn:btih:PLACEHOLDER_FOR_THE_KID_1921&dn=The+Kid+%281921%29+%5B720p%5D+%5BYTS.MX%5D&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce"
+        "magnet": "magnet:?xt=urn:btih:0697BC07EBC5914085C2A3BCE646509086BF6265&dn=The+Kid+%281921%29+%5B720p%5D+%5BYTS.MX%5D&tr=udp%3A%2F%2Fglotorrents.pw%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A80&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Fp4p.arenabg.ch%3A1337&tr=udp%3A%2F%2Ftracker.internetwarriors.net%3A1337"
+      }
+    ]
+  },
+  {
+    "title": "The Gold Rush",
+    "year": "1925",
+    "image_url": "https://en.yts-official.biz/movies/poster/the-gold-rush-1925.jpg",
+    "magnets": [
+      {
+        "quality": "720p",
+        "magnet": "magnet:?xt=urn:btih:BB5A1F6D17D3F8E01DE20D42FB9860157A24456C&dn=The+Gold+Rush+%281925%29+%5B720p%5D+%5BYTS.MX%5D&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969%2Fannounce&tr=udp%3A%2F%2F9.rarbg.to%3A2710%2Fannounce&tr=udp%3A%2F%2Fp4p.arenabg.ch%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.cyberia.is%3A6969%2Fannounce&tr=http%3A%2F%2Fp4p.arenabg.com%3A1337%2Fannounce&tr=udp%3A%2F%2Ftracker.internetwarriors.net%3A1337%2Fannounce"
       }
     ]
   }

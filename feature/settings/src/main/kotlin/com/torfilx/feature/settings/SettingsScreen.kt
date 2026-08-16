@@ -30,6 +30,7 @@ import com.torfilx.core.model.QualityPreference
 import com.torfilx.core.ui.component.KeyboardLayout
 import com.torfilx.core.ui.component.OnScreenKeyboard
 import com.torfilx.core.ui.component.SearchField
+import com.torfilx.core.ui.component.formatBytes
 import com.torfilx.core.ui.component.TvButton
 import com.torfilx.core.ui.component.TvChip
 import com.torfilx.core.ui.theme.LocalTorfilxDimens
@@ -197,6 +198,49 @@ fun SettingsScreen(
                         checked = state.settings.subtitlesEnabledByDefault,
                         onToggle = viewModel::setSubtitlesEnabled,
                     )
+                }
+            }
+
+            item(key = "sharing") {
+                SettingsSection("Sharing (BitTorrent)") {
+                    if (!state.torrentAvailable) {
+                        Text(
+                            text = "BitTorrent is not available on this device.",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = TorfilxColors.TextTertiary,
+                        )
+                    } else {
+                        SettingsToggleRow(
+                            label = "Share while watching",
+                            description = "Streaming a title also uploads it to others, and your IP " +
+                                "is visible to that swarm. Off by default.",
+                            checked = state.sharingConsent,
+                            onToggle = viewModel::setSharingConsent,
+                        )
+                        SettingsToggleRow(
+                            label = "Keep seeding after playback",
+                            description = "Keeps sharing what is already on disk until the space is needed.",
+                            checked = state.seedingEnabled,
+                            onToggle = viewModel::setSeedingEnabled,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            TvChip(
+                                text = "Disk share: ${(state.storageFraction * 100).toInt()}% of free",
+                                selected = true,
+                                onClick = viewModel::cycleStorageFraction,
+                            )
+                        }
+                        Text(
+                            text = with(state.sharingStats) {
+                                "Using ${formatBytes(diskUsedBytes)} of ${formatBytes(diskCapBytes)} " +
+                                    "(${formatBytes(freeSpaceBytes)} free) · " +
+                                    "up ${formatBytes(totalUploadedBytes)} · " +
+                                    "down ${formatBytes(totalDownloadedBytes)}"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = TorfilxColors.TextSecondary,
+                        )
+                    }
                 }
             }
 

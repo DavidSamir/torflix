@@ -596,3 +596,22 @@ private fun AspectMode.next(): AspectMode = when (this) {
     AspectMode.FILL -> AspectMode.ZOOM
     AspectMode.ZOOM -> AspectMode.FIT
 }
+
+private fun Float.nextSpeed(): Float = when (this) {
+    1f -> 1.25f
+    1.25f -> 1.5f
+    1.5f -> 2f
+    2f -> 0.5f
+    0.5f -> 0.75f
+    else -> 1f
+}
+
+private const val SEEK_STEP_MS = 10_000L
+private const val LONG_SEEK_STEP_MS = 30_000L
+
+private fun PlaybackError.isRetryable(): Boolean = when (this) {
+    is PlaybackError.Unsupported, is PlaybackError.SharingNotEnabled -> false
+    is PlaybackError.Network, is PlaybackError.NotFound, is PlaybackError.Unauthorized,
+    is PlaybackError.OutOfSpace, is PlaybackError.Unknown,
+    -> true
+}
