@@ -7,8 +7,14 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
+import coil3.request.bitmapConfig
 import coil3.request.crossfade
+import com.torfilx.core.common.di.ApplicationScope
 import com.torfilx.core.common.log.TorfilxLog
+import com.torfilx.core.data.catalog.BundledCatalog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 import dagger.hilt.android.HiltAndroidApp
 import okio.Path.Companion.toOkioPath
 
@@ -23,17 +29,32 @@ private const val TAG = "App"
 @HiltAndroidApp
 class TorfilxApplication : Application(), SingletonImageLoader.Factory {
 
+    @Inject
+    lateinit var catalog: BundledCatalog
+
+    @Inject
+    @ApplicationScope
+    lateinit var applicationScope: CoroutineScope
+
     override fun onCreate() {
         super.onCreate()
         TorfilxLog.debugEnabled = BuildConfig.DEBUG
         TorfilxLog.i(TAG, "TORFILX ${BuildConfig.VERSION_NAME} starting")
+
+        // Parse and index the catalogue before the first screen asks for it, off the main thread:
+        // with a few thousand entries this is tens of milliseconds that must not land on a frame.
+        applicationScope.launch { catalog.preload() }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
+            // Posters decode as RGB_565: half the memory of ARGB_8888, and the banding is invisible
+            // on a TV. On a 1.5 GB stick that is the difference between a smooth row and a GC pause
+            // every few cards.
+            .bitmapConfig(android.graphics.Bitmap.Config.RGB_565)
             .memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, MEMORY_CACHE_PERCENT)
+                    .maxSizePercent(context, memoryCachePercent())
                     .build()
             }
             .diskCache {
@@ -54,8 +75,18 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    /** Low-RAM devices (1.5 GB Fire Sticks) get a smaller share of a much smaller heap. */
+    private fun memoryCachePercent(): Double {
+        val activityManager = getSystemService(android.app.ActivityManager::class.java)
+        val lowRam = activityManager?.isLowRamDevice == true ||
+            (activityManager?.memoryClass ?: 0) <= LOW_MEMORY_CLASS_MB
+        return if (lowRam) LOW_RAM_CACHE_PERCENT else MEMORY_CACHE_PERCENT
+    }
+
     private companion object {
         const val MEMORY_CACHE_PERCENT = 0.25
+        const val LOW_RAM_CACHE_PERCENT = 0.15
+        const val LOW_MEMORY_CLASS_MB = 128
         const val DISK_CACHE_BYTES = 256L * 1024 * 1024
     }
 }

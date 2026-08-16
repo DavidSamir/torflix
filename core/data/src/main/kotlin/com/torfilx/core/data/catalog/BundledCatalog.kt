@@ -53,14 +53,75 @@ class BundledCatalog @Inject constructor(
 ) {
 
     @Volatile
-    private var cached: List<CatalogItem>? = null
+    private var cached: Loaded? = null
 
-    /** Loaded once and kept: the asset is small and never changes at runtime. */
-    fun items(): List<CatalogItem> = cached ?: load().also { cached = it }
+    /**
+     * Everything derived from the catalogue file, computed once.
+     *
+     * With a few thousand titles the difference matters: a per-id linear scan and a fresh
+     * `map { it.item }` on every flow emission turn a progress tick (every 10 s while playing) into
+     * thousands of allocations, on a device with a very small CPU budget.
+     */
+    private class Loaded(
+        val items: List<CatalogItem>,
+        /** Domain items in catalogue order, so rows never re-map the list. */
+        val mediaItems: List<MediaItem>,
+        val byId: Map<String, CatalogItem>,
+        val genres: List<String>,
+        /** Lower-cased titles, parallel to [mediaItems], so search does no per-keystroke lowercasing. */
+        val searchKeys: List<String>,
+    )
 
-    fun item(id: String): CatalogItem? = items().firstOrNull { it.item.id == id }
+    private fun loaded(): Loaded = cached ?: synchronized(this) {
+        cached ?: buildLoaded().also { cached = it }
+    }
+
+    /** Parses the asset eagerly, off the main thread. Safe to call more than once. */
+    fun preload() {
+        loaded()
+    }
+
+    fun items(): List<CatalogItem> = loaded().items
+
+    /** Domain items only — the list every screen actually renders. */
+    fun mediaItems(): List<MediaItem> = loaded().mediaItems
+
+    fun item(id: String): CatalogItem? = loaded().byId[id]
 
     fun sourcesFor(id: String): List<MediaSource> = item(id)?.sources.orEmpty()
+
+    fun genres(): List<String> = loaded().genres
+
+    /** Case-insensitive title search over pre-lowered keys. */
+    fun search(query: String, limit: Int): List<MediaItem> {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return emptyList()
+        val data = loaded()
+        val prefix = ArrayList<MediaItem>(limit)
+        val contains = ArrayList<MediaItem>(limit)
+        for (index in data.searchKeys.indices) {
+            val key = data.searchKeys[index]
+            when {
+                key.startsWith(needle) -> prefix += data.mediaItems[index]
+                key.contains(needle) -> contains += data.mediaItems[index]
+                else -> continue
+            }
+            if (prefix.size >= limit) break
+        }
+        return (prefix + contains).take(limit)
+    }
+
+    private fun buildLoaded(): Loaded {
+        val items = load()
+        val mediaItems = items.map { it.item }
+        return Loaded(
+            items = items,
+            mediaItems = mediaItems,
+            byId = items.associateBy { it.item.id },
+            genres = mediaItems.flatMap { it.genres }.distinct().sorted(),
+            searchKeys = mediaItems.map { it.title.lowercase() },
+        )
+    }
 
     private fun load(): List<CatalogItem> = runCatching {
         val raw = context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }

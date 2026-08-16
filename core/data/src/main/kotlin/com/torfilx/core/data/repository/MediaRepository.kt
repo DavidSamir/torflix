@@ -2,9 +2,9 @@ package com.torfilx.core.data.repository
 
 import com.torfilx.core.common.di.Dispatcher
 import com.torfilx.core.common.di.TorfilxDispatcher
+import com.torfilx.core.common.time.TimeProvider
 import com.torfilx.core.data.catalog.BundledCatalog
 import com.torfilx.core.data.database.SearchHistoryDao
-import com.torfilx.core.common.time.TimeProvider
 import com.torfilx.core.model.HomeRow
 import com.torfilx.core.model.HomeRowKind
 import com.torfilx.core.model.LibraryQuery
@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -27,9 +28,13 @@ import javax.inject.Singleton
 /**
  * The library.
  *
- * There is exactly one source of titles: the catalogue bundled with the app
- * (`assets/catalog.json`). Nothing is fetched from a media server — the app has no server. What
- * *is* dynamic lives in Room: playback progress and My List, both local to this device.
+ * One source of titles: the catalogue bundled with the app. What is dynamic lives in Room —
+ * playback progress and My List — and is merged in here.
+ *
+ * Everything derived purely from the catalogue (sort orders, genre groupings) is computed **once**
+ * and cached. Only the cheap decoration step re-runs when progress changes, because progress changes
+ * every ten seconds during playback and a Fire TV Stick cannot afford to rebuild thousands of cards
+ * each time.
  */
 @Singleton
 class MediaRepository @Inject constructor(
@@ -41,7 +46,48 @@ class MediaRepository @Inject constructor(
     @Dispatcher(TorfilxDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
 ) {
 
-    private fun catalogItems(): List<MediaItem> = catalog.items().map { it.item }
+    /** Catalogue-derived structure, independent of local state. Built lazily, then kept. */
+    private class CatalogViews(
+        val byRecent: List<MediaItem>,
+        val byTitle: List<MediaItem>,
+        val byYear: List<MediaItem>,
+        val byRating: List<MediaItem>,
+        val genreRows: List<Pair<String, List<MediaItem>>>,
+    )
+
+    @Volatile
+    private var views: CatalogViews? = null
+
+    private fun views(): CatalogViews = views ?: synchronized(this) {
+        views ?: buildViews().also { views = it }
+    }
+
+    private fun buildViews(): CatalogViews {
+        val items = catalog.mediaItems()
+        val byGenre = LinkedHashMap<String, MutableList<MediaItem>>()
+        items.forEach { item ->
+            item.genres.forEach { genre -> byGenre.getOrPut(genre) { ArrayList() }.add(item) }
+        }
+        return CatalogViews(
+            byRecent = items.sortedByDescending { it.addedAtMs ?: it.year?.toLong() ?: 0L },
+            byTitle = items.sortedBy { it.sortTitle.lowercase() },
+            byYear = items.sortedByDescending { it.year ?: 0 },
+            byRating = items.sortedByDescending { it.communityRating ?: 0.0 },
+            genreRows = byGenre
+                .filterValues { it.size >= MIN_GENRE_ROW_SIZE }
+                .toList()
+                .sortedBy { it.first }
+                .map { (genre, list) -> genre to list.take(MAX_ROW_ITEMS) },
+        )
+    }
+
+    /** Cheap decoration: wraps pre-sorted items with the local state that actually changed. */
+    private fun List<MediaItem>.toCards(
+        progress: Map<String, PlaybackProgress>,
+        myList: Set<String>,
+    ): List<MediaCard> = map { item ->
+        MediaCard(item = item, progress = progress[item.id], inMyList = item.id in myList)
+    }
 
     // --- Library ---------------------------------------------------------------------------------
 
@@ -49,38 +95,40 @@ class MediaRepository @Inject constructor(
         progressRepository.observeAllProgress(),
         myListRepository.itemIds,
     ) { progress, myList ->
-        catalogItems()
+        val sorted = when (query.sort) {
+            LibrarySort.RECENTLY_ADDED -> views().byRecent
+            LibrarySort.ALPHABETICAL -> views().byTitle
+            LibrarySort.YEAR -> views().byYear
+            LibrarySort.RATING -> views().byRating
+        }
+        sorted.asSequence()
             .filter { item -> query.genre == null || query.genre in item.genres }
-            .sortedWith(query.sort.comparator())
             .map { item ->
                 MediaCard(item = item, progress = progress[item.id], inMyList = item.id in myList)
             }
             .filter { card -> query.watched.matches(card.progress) }
+            .toList()
     }.flowOn(ioDispatcher)
 
-    fun observeItemCount(): Flow<Int> = kotlinx.coroutines.flow.flowOf(catalogItems().size)
+    fun observeItemCount(): Flow<Int> = flowOf(catalog.mediaItems().size)
 
-    suspend fun genres(): List<String> = withContext(ioDispatcher) {
-        catalogItems().flatMap { it.genres }.distinct().sorted()
-    }
+    suspend fun genres(): List<String> = withContext(ioDispatcher) { catalog.genres() }
 
     // --- Home ------------------------------------------------------------------------------------
 
     /**
-     * Home rows, all derived locally: Continue Watching, My List and the catalogue itself.
+     * Home rows: Continue Watching, the catalogue, My List, then a row per genre.
      *
-     * With no server there is no row ordering to fetch, so the rows are the ones that mean something
-     * to the viewer: what they were watching, what they saved, and everything else by decade.
+     * Rows are capped at [MAX_ROW_ITEMS]: a row nobody can reach the end of with a D-pad costs
+     * memory and scroll performance for nothing — the Movies grid is where the whole catalogue is
+     * browsed.
      */
     fun observeHome(): Flow<List<HomeRow>> = combine(
         progressRepository.observeContinueWatching(),
-        myListCards(),
         progressRepository.observeAllProgress(),
         myListRepository.itemIds,
-    ) { continueWatching, myList, progress, myListIds ->
-        val all = catalogItems().map { item ->
-            MediaCard(item = item, progress = progress[item.id], inMyList = item.id in myListIds)
-        }
+    ) { continueWatching, progress, myListIds ->
+        val data = views()
 
         buildList {
             if (continueWatching.isNotEmpty()) {
@@ -93,72 +141,68 @@ class MediaRepository @Inject constructor(
                     ),
                 )
             }
-            if (all.isNotEmpty()) {
-                add(HomeRow(id = ROW_CATALOG, title = "Public domain", items = all))
+
+            val recent = data.byRecent.take(MAX_ROW_ITEMS).toCards(progress, myListIds)
+            if (recent.isNotEmpty()) {
+                add(HomeRow(id = ROW_CATALOG, title = "Recently added", items = recent))
             }
-            if (myList.isNotEmpty()) {
+
+            if (myListIds.isNotEmpty()) {
+                val myListCards = data.byRecent
+                    .asSequence()
+                    .filter { it.id in myListIds }
+                    .take(MAX_ROW_ITEMS)
+                    .map { MediaCard(it, progress = progress[it.id], inMyList = true) }
+                    .toList()
+                if (myListCards.isNotEmpty()) {
+                    add(
+                        HomeRow(
+                            id = ROW_MY_LIST,
+                            title = "My List",
+                            kind = HomeRowKind.MY_LIST,
+                            items = myListCards,
+                        ),
+                    )
+                }
+            }
+
+            data.genreRows.take(MAX_GENRE_ROWS).forEach { (genre, items) ->
                 add(
                     HomeRow(
-                        id = ROW_MY_LIST,
-                        title = "My List",
-                        kind = HomeRowKind.MY_LIST,
-                        items = myList,
+                        id = "genre-$genre",
+                        title = genre,
+                        kind = HomeRowKind.GENRE,
+                        items = items.toCards(progress, myListIds),
                     ),
                 )
             }
-            // A row per genre, so a bigger catalogue still browses like a library.
-            all.flatMap { it.item.genres }
-                .distinct()
-                .sorted()
-                .forEach { genre ->
-                    val items = all.filter { genre in it.item.genres }
-                    if (items.size >= MIN_GENRE_ROW_SIZE) {
-                        add(HomeRow(id = "genre-$genre", title = genre, kind = HomeRowKind.GENRE, items = items))
-                    }
-                }
         }
     }.flowOn(ioDispatcher)
 
-    private fun myListCards(): Flow<List<MediaCard>> =
-        combine(myListRepository.itemIds, progressRepository.observeAllProgress()) { ids, progress ->
-            catalogItems()
-                .filter { it.id in ids }
-                .map { MediaCard(it, progress = progress[it.id], inMyList = true) }
-        }
-
     // --- Details ---------------------------------------------------------------------------------
 
-    fun observeItem(id: String): Flow<MediaItem?> =
-        kotlinx.coroutines.flow.flowOf(catalog.item(id)?.item)
+    fun observeItem(id: String): Flow<MediaItem?> = flowOf(catalog.item(id)?.item)
 
     suspend fun item(id: String): MediaItem? = withContext(ioDispatcher) { catalog.item(id)?.item }
 
     // --- Search ----------------------------------------------------------------------------------
 
     suspend fun search(query: String): List<SearchResult> = withContext(ioDispatcher) {
-        val needle = query.trim()
-        if (needle.isBlank()) return@withContext emptyList()
+        val matches = catalog.search(query, SEARCH_LIMIT)
+        if (matches.isEmpty()) return@withContext emptyList()
+
         val myListIds = myListRepository.itemIds.first()
         val progress = progressRepository.currentProgressMap()
-
-        catalogItems()
-            .filter { it.title.contains(needle, ignoreCase = true) }
-            .sortedWith(
-                compareBy(
-                    { !it.title.startsWith(needle, ignoreCase = true) },
-                    { it.sortTitle.lowercase() },
+        matches.map { item ->
+            SearchResult(
+                card = MediaCard(
+                    item = item,
+                    progress = progress[item.id],
+                    inMyList = item.id in myListIds,
                 ),
+                matchedOn = "title",
             )
-            .map { item ->
-                SearchResult(
-                    card = MediaCard(
-                        item = item,
-                        progress = progress[item.id],
-                        inMyList = item.id in myListIds,
-                    ),
-                    matchedOn = "title",
-                )
-            }
+        }
     }
 
     fun recentSearches(limit: Int = RECENT_SEARCH_LIMIT): Flow<List<String>> =
@@ -166,18 +210,11 @@ class MediaRepository @Inject constructor(
 
     suspend fun recordSearch(query: String) = withContext(ioDispatcher) {
         if (query.isNotBlank()) {
-            searchHistoryDao.record(query.trim(), timeProvider.nowMs(), RECENT_SEARCH_LIMIT)
+            searchHistoryDao.record(query.trim(), timeProvider.writeTimestampMs(), RECENT_SEARCH_LIMIT)
         }
     }
 
     suspend fun clearSearchHistory() = withContext(ioDispatcher) { searchHistoryDao.clear() }
-
-    private fun LibrarySort.comparator(): Comparator<MediaItem> = when (this) {
-        LibrarySort.RECENTLY_ADDED -> compareByDescending { it.addedAtMs ?: it.year?.toLong() ?: 0L }
-        LibrarySort.ALPHABETICAL -> compareBy { it.sortTitle.lowercase() }
-        LibrarySort.YEAR -> compareByDescending { it.year ?: 0 }
-        LibrarySort.RATING -> compareByDescending { it.communityRating ?: 0.0 }
-    }
 
     private fun WatchedFilter.matches(progress: PlaybackProgress?): Boolean = when (this) {
         WatchedFilter.ALL -> true
@@ -189,7 +226,12 @@ class MediaRepository @Inject constructor(
         const val ROW_CONTINUE_WATCHING = "continue-watching"
         const val ROW_MY_LIST = "my-list"
         const val ROW_CATALOG = "catalog"
+        const val SEARCH_LIMIT = 60
         const val RECENT_SEARCH_LIMIT = 10
+
+        /** A TV row longer than this is unreachable by D-pad and only costs memory. */
+        private const val MAX_ROW_ITEMS = 60
+        private const val MAX_GENRE_ROWS = 12
         private const val MIN_GENRE_ROW_SIZE = 2
     }
 }
