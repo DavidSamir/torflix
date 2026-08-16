@@ -2,22 +2,15 @@ package com.torfilx.tv
 
 import android.app.Application
 import android.content.ComponentCallbacks2
-import androidx.hilt.work.HiltWorkerFactory
-import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
-import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import com.torfilx.core.common.log.TorfilxLog
-import com.torfilx.core.network.di.MediaHttpClient
 import dagger.hilt.android.HiltAndroidApp
-import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
-import javax.inject.Inject
-import javax.inject.Provider
 
 private const val TAG = "App"
 
@@ -28,14 +21,7 @@ private const val TAG = "App"
  * disk, with `RGB_565`-friendly inexact sizing done at the call sites (plan.md §4, §9).
  */
 @HiltAndroidApp
-class TorfilxApplication : Application(), Configuration.Provider, SingletonImageLoader.Factory {
-
-    @Inject
-    lateinit var workerFactory: HiltWorkerFactory
-
-    @Inject
-    @MediaHttpClient
-    lateinit var mediaHttpClient: Provider<OkHttpClient>
+class TorfilxApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
@@ -43,17 +29,8 @@ class TorfilxApplication : Application(), Configuration.Provider, SingletonImage
         TorfilxLog.i(TAG, "TORFILX ${BuildConfig.VERSION_NAME} starting")
     }
 
-    override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.DEBUG else android.util.Log.WARN)
-            .build()
-
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
-            .components {
-                add(OkHttpNetworkFetcherFactory(callFactory = { mediaHttpClient.get() }))
-            }
             .memoryCache {
                 MemoryCache.Builder()
                     .maxSizePercent(context, MEMORY_CACHE_PERCENT)

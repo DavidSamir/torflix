@@ -6,18 +6,13 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.lifecycle.lifecycleScope
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.data.settings.SettingsRepository
-import com.torfilx.core.data.remote.DemoMediaRemoteSource
-import com.torfilx.core.data.sync.SyncScheduler
 import com.torfilx.core.player.PlaybackController
 import com.torfilx.core.player.display.DisplayModeController
 import com.torfilx.core.player.service.PlaybackService
 import com.torfilx.core.ui.theme.TorfilxTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val TAG = "MainActivity"
@@ -35,17 +30,10 @@ class MainActivity : ComponentActivity() {
     lateinit var settingsRepository: SettingsRepository
 
     @Inject
-    lateinit var syncScheduler: SyncScheduler
-
-    @Inject
     lateinit var playbackController: PlaybackController
 
     @Inject
     lateinit var displayModeController: DisplayModeController
-
-    /** Debug-only: lets the demo library point at a real media file (see [handleDebugIntent]). */
-    @Inject
-    lateinit var demoRemoteSource: DemoMediaRemoteSource
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -58,26 +46,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Debug-only switches (demo library, server URL) delivered as intent extras.
-        handleDebugIntent(intent)
-
-        // Kick a background library refresh so Home is current by the time the user has read the
-        // hero, without blocking the first frame.
-        lifecycleScope.launch {
-            if (settingsRepository.settings.first().isServerConfigured ||
-                settingsRepository.demoMode.first()
-            ) {
-                syncScheduler.enqueueLibraryRefresh()
-                syncScheduler.enqueueProgressSync()
-            }
-        }
-    }
-
-    /** `singleTask` delivers a re-launch here rather than through `onCreate`. */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleDebugIntent(intent)
     }
 
     override fun onStart() {

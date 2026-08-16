@@ -116,24 +116,9 @@ class DetailsViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), DetailsUiState.Loading)
 
-    init {
-        refresh()
-    }
-
+    /** The catalogue is local, so there is nothing to refresh — this only clears a stale error. */
     fun refresh() {
-        viewModelScope.launch {
-            episodesLoading.value = true
-            try {
-                mediaRepository.refreshDetails(itemId)
-                error.value = null
-            } catch (failure: DataError) {
-                TorfilxLog.w(TAG, "Details refresh failed for $itemId", failure)
-                error.value = failure
-                if (failure is DataError.NotFound) mediaRepository.forgetItem(itemId)
-            } finally {
-                episodesLoading.value = false
-            }
-        }
+        error.value = null
     }
 
     fun selectSeason(season: Season) {

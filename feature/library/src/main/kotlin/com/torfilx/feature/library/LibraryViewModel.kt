@@ -123,23 +123,13 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
+    /** The catalogue ships with the app; "refresh" only re-reads the local genre list. */
     fun refresh() {
         viewModelScope.launch {
             loading.value = true
-            try {
-                mediaRepository.refreshLibrary()
-                genres.value = mediaRepository.genres()
-                errorMessage.value = null
-            } catch (error: DataError) {
-                TorfilxLog.w(TAG, "Library refresh failed", error)
-                errorMessage.value = when (error) {
-                    is DataError.Unauthorized -> "The server rejected this device — check Settings."
-                    is DataError.NotConfigured -> "No media server configured."
-                    else -> "Can't reach the server — showing your saved library."
-                }
-            } finally {
-                loading.value = false
-            }
+            genres.value = mediaRepository.genres()
+            errorMessage.value = null
+            loading.value = false
         }
     }
 

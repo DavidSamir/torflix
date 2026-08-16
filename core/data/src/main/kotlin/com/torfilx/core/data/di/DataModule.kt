@@ -15,6 +15,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.serialization.json.Json
 import javax.inject.Singleton
 
 @Module
@@ -50,4 +51,24 @@ object DatabaseModule {
 
     @Provides
     fun providesSyncMarkerDao(database: TorfilxDatabase): SyncMarkerDao = database.syncMarkerDao()
+}
+
+/**
+ * JSON parsing for the bundled catalogue.
+ *
+ * Lenient on purpose: a hand-edited `catalog.json` with an extra field, a missing optional or a
+ * trailing comma-style quirk should still load the titles it can, rather than leaving the app empty.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+object SerializationModule {
+
+    @Provides
+    @Singleton
+    fun providesJson(): Json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        explicitNulls = false
+        isLenient = true
+    }
 }

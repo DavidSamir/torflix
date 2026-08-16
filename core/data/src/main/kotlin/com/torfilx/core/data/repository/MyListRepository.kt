@@ -36,7 +36,7 @@ class MyListRepository @Inject constructor(
         myListDao.upsert(
             MyListEntity(
                 itemId = itemId,
-                addedAtMs = timeProvider.serverAdjustedNowMs(),
+                addedAtMs = timeProvider.writeTimestampMs(),
                 syncState = SyncState.SYNCED.name,
                 deleted = false,
             ),
@@ -48,7 +48,7 @@ class MyListRepository @Inject constructor(
         myListDao.upsert(
             MyListEntity(
                 itemId = itemId,
-                addedAtMs = existing?.addedAtMs ?: timeProvider.serverAdjustedNowMs(),
+                addedAtMs = existing?.addedAtMs ?: timeProvider.writeTimestampMs(),
                 syncState = SyncState.SYNCED.name,
                 deleted = true,
             ),

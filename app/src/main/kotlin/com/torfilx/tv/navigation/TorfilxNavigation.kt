@@ -95,7 +95,6 @@ fun TorfilxNavHost(
             HomeScreen(
                 onOpenDetails = openDetails,
                 onPlay = play,
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
 

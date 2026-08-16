@@ -76,7 +76,7 @@ class ProgressRepository @Inject constructor(
             positionMs = safePosition,
             durationMs = safeDuration,
             watched = watched,
-            updatedAtMs = timeProvider.serverAdjustedNowMs(),
+            updatedAtMs = timeProvider.writeTimestampMs(),
             syncState = SyncState.SYNCED.name,
             showId = showId ?: episodeDao.getEpisode(itemId)?.showId,
         )
