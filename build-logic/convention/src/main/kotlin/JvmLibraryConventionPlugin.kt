@@ -1,8 +1,8 @@
-import com.myflix.buildlogic.configureKotlinJvm
+import com.torfilx.buildlogic.configureKotlinJvm
 import org.gradle.api.JavaVersion
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.kotlin.dsl.configure
-import com.myflix.buildlogic.libs
+import com.torfilx.buildlogic.libs
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.dependencies

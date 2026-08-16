@@ -1,3 +1,3 @@
 plugins {
-    id("myflix.jvm.library")
+    id("torfilx.jvm.library")
 }

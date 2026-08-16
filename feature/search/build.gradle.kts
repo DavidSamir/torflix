@@ -1,7 +1,7 @@
 plugins {
-    id("myflix.android.feature")
+    id("torfilx.android.feature")
 }
 
 android {
-    namespace = "com.myflix.feature.search"
+    namespace = "com.torfilx.feature.search"
 }

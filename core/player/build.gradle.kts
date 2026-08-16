@@ -1,10 +1,10 @@
 plugins {
-    id("myflix.android.library")
-    id("myflix.android.hilt")
+    id("torfilx.android.library")
+    id("torfilx.android.hilt")
 }
 
 android {
-    namespace = "com.myflix.core.player"
+    namespace = "com.torfilx.core.player"
 }
 
 dependencies {

@@ -41,6 +41,7 @@ kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
 kotlinxDatetime = "0.7.1"
 coil = "3.5.0"
+libtorrent4j = "2.1.0-39"
 
 # --- Test --------------------------------------------------------------------
 junit4 = "4.13.2"
@@ -130,6 +131,12 @@ coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref 
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 coil-test = { group = "io.coil-kt.coil3", name = "coil-test", version.ref = "coil" }
 
+# --- BitTorrent (public-domain catalogue playback + seeding) -------------------
+libtorrent4j = { group = "org.libtorrent4j", name = "libtorrent4j", version.ref = "libtorrent4j" }
+libtorrent4j-android-arm64 = { group = "org.libtorrent4j", name = "libtorrent4j-android-arm64", version.ref = "libtorrent4j" }
+libtorrent4j-android-arm = { group = "org.libtorrent4j", name = "libtorrent4j-android-arm", version.ref = "libtorrent4j" }
+libtorrent4j-android-x86-v64 = { group = "org.libtorrent4j", name = "libtorrent4j-android-x86_64", version.ref = "libtorrent4j" }
+
 # --- Test --------------------------------------------------------------------
 junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
@@ -162,10 +169,10 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 
 # Convention plugins defined in :build-logic:convention
-myflix-android-application = { id = "myflix.android.application" }
-myflix-android-library = { id = "myflix.android.library" }
-myflix-android-compose = { id = "myflix.android.compose" }
-myflix-android-feature = { id = "myflix.android.feature" }
-myflix-android-hilt = { id = "myflix.android.hilt" }
-myflix-android-room = { id = "myflix.android.room" }
-myflix-jvm-library = { id = "myflix.jvm.library" }
+torfilx-android-application = { id = "torfilx.android.application" }
+torfilx-android-library = { id = "torfilx.android.library" }
+torfilx-android-compose = { id = "torfilx.android.compose" }
+torfilx-android-feature = { id = "torfilx.android.feature" }
+torfilx-android-hilt = { id = "torfilx.android.hilt" }
+torfilx-android-room = { id = "torfilx.android.room" }
+torfilx-jvm-library = { id = "torfilx.jvm.library" }

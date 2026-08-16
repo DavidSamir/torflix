@@ -1,18 +1,20 @@
 plugins {
-    id("myflix.android.library")
-    id("myflix.android.hilt")
-    id("myflix.android.room")
+    id("torfilx.android.library")
+    id("torfilx.android.hilt")
+    id("torfilx.android.room")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
-    namespace = "com.myflix.core.data"
+    namespace = "com.torfilx.core.data"
+    buildFeatures { androidResources = true }
 }
 
 dependencies {
     api(projects.core.model)
     api(projects.core.common)
     implementation(projects.core.network)
+    api(projects.core.torrent)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.paging.runtime)

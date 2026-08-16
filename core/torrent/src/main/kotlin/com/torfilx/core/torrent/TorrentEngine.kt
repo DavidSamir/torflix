@@ -1,0 +1,47 @@
+package com.torfilx.core.torrent
+
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * The app's BitTorrent capability.
+ *
+ * Two rules are baked into the contract rather than left to callers:
+ * - nothing starts until the user has explicitly consented to sharing (uploading), because
+ *   participating in a swarm means uploading to strangers;
+ * - the engine never uses more disk than [StorageBudget] allows, computed from *currently free*
+ *   space, so a full TV can never be the app's fault.
+ */
+interface TorrentEngine {
+
+    /** Aggregate stats for the Settings screen. */
+    val stats: Flow<SharingStats>
+
+    /** Per-torrent status, keyed by info hash. */
+    val torrents: Flow<List<TorrentStatus>>
+
+    /** Starts the session. Safe to call repeatedly. */
+    suspend fun start()
+
+    /** Stops the session and releases the native handles. */
+    suspend fun stop()
+
+    /**
+     * Prepares [magnet] for playback and returns a local HTTP URL the player can read.
+     *
+     * Downloading is sequential from the start of the chosen video file, so playback can begin long
+     * before the whole file exists.
+     */
+    suspend fun stream(magnet: String): TorrentStream
+
+    /** Stops streaming [infoHash]; it may keep seeding if the policy allows. */
+    suspend fun stopStreaming(infoHash: String)
+
+    /** Removes a torrent and deletes its data. */
+    suspend fun remove(infoHash: String, deleteData: Boolean = true)
+
+    /** Frees disk until usage is within the budget, oldest-touched torrents first. */
+    suspend fun enforceStorageBudget()
+
+    /** True when the native library actually loaded on this device. */
+    fun isAvailable(): Boolean
+}

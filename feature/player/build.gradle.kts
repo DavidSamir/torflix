@@ -1,9 +1,9 @@
 plugins {
-    id("myflix.android.feature")
+    id("torfilx.android.feature")
 }
 
 android {
-    namespace = "com.myflix.feature.player"
+    namespace = "com.torfilx.feature.player"
 }
 
 dependencies {

@@ -1,5 +1,5 @@
 import com.google.devtools.ksp.gradle.KspExtension
-import com.myflix.buildlogic.libs
+import com.torfilx.buildlogic.libs
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure

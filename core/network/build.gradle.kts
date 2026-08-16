@@ -1,11 +1,11 @@
 plugins {
-    id("myflix.android.library")
-    id("myflix.android.hilt")
+    id("torfilx.android.library")
+    id("torfilx.android.hilt")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
-    namespace = "com.myflix.core.network"
+    namespace = "com.torfilx.core.network"
     buildFeatures { buildConfig = true }
 }
 

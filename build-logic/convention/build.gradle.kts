@@ -2,7 +2,7 @@ plugins {
     `kotlin-dsl`
 }
 
-group = "com.myflix.buildlogic"
+group = "com.torfilx.buildlogic"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -25,31 +25,31 @@ dependencies {
 gradlePlugin {
     plugins {
         register("androidApplication") {
-            id = "myflix.android.application"
+            id = "torfilx.android.application"
             implementationClass = "AndroidApplicationConventionPlugin"
         }
         register("androidLibrary") {
-            id = "myflix.android.library"
+            id = "torfilx.android.library"
             implementationClass = "AndroidLibraryConventionPlugin"
         }
         register("androidCompose") {
-            id = "myflix.android.compose"
+            id = "torfilx.android.compose"
             implementationClass = "AndroidComposeConventionPlugin"
         }
         register("androidFeature") {
-            id = "myflix.android.feature"
+            id = "torfilx.android.feature"
             implementationClass = "AndroidFeatureConventionPlugin"
         }
         register("androidHilt") {
-            id = "myflix.android.hilt"
+            id = "torfilx.android.hilt"
             implementationClass = "AndroidHiltConventionPlugin"
         }
         register("androidRoom") {
-            id = "myflix.android.room"
+            id = "torfilx.android.room"
             implementationClass = "AndroidRoomConventionPlugin"
         }
         register("jvmLibrary") {
-            id = "myflix.jvm.library"
+            id = "torfilx.jvm.library"
             implementationClass = "JvmLibraryConventionPlugin"
         }
     }

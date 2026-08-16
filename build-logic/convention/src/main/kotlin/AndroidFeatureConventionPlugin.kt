@@ -1,5 +1,5 @@
 import com.android.build.api.dsl.LibraryExtension
-import com.myflix.buildlogic.libs
+import com.torfilx.buildlogic.libs
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
@@ -12,9 +12,9 @@ import org.gradle.kotlin.dsl.project
  */
 class AndroidFeatureConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
-        pluginManager.apply("myflix.android.library")
-        pluginManager.apply("myflix.android.compose")
-        pluginManager.apply("myflix.android.hilt")
+        pluginManager.apply("torfilx.android.library")
+        pluginManager.apply("torfilx.android.compose")
+        pluginManager.apply("torfilx.android.hilt")
 
         extensions.configure<LibraryExtension> {
             defaultConfig.consumerProguardFiles("consumer-rules.pro")

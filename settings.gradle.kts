@@ -21,7 +21,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "myflix"
+rootProject.name = "torfilx"
 
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
@@ -33,6 +33,7 @@ include(":core:ui")
 include(":core:network")
 include(":core:data")
 include(":core:player")
+include(":core:torrent")
 include(":core:testing")
 
 include(":feature:home")

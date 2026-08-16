@@ -1,10 +1,10 @@
 plugins {
-    id("myflix.android.library")
-    id("myflix.android.compose")
+    id("torfilx.android.library")
+    id("torfilx.android.compose")
 }
 
 android {
-    namespace = "com.myflix.core.ui"
+    namespace = "com.torfilx.core.ui"
     buildFeatures { androidResources = true }
 }
 

@@ -1,18 +1,18 @@
 plugins {
-    id("myflix.android.application")
-    id("myflix.android.compose")
-    id("myflix.android.hilt")
+    id("torfilx.android.application")
+    id("torfilx.android.compose")
+    id("torfilx.android.hilt")
     alias(libs.plugins.kotlin.serialization)
 }
 
 android {
-    namespace = "com.myflix.tv"
+    namespace = "com.torfilx.tv"
 
     defaultConfig {
-        applicationId = "com.myflix.tv"
+        applicationId = "com.torfilx.tv"
         versionCode = 1
         versionName = "0.1.0"
-        testInstrumentationRunner = "com.myflix.tv.HiltTestRunner"
+        testInstrumentationRunner = "com.torfilx.tv.HiltTestRunner"
         resourceConfigurations += setOf("en", "he")
     }
 
@@ -23,12 +23,12 @@ android {
     signingConfigs {
         create("release") {
             // Populated from env for CI; falls back to the debug key for local sideloading.
-            val storePath = providers.environmentVariable("MYFLIX_KEYSTORE").orNull
+            val storePath = providers.environmentVariable("TORFILX_KEYSTORE").orNull
             if (storePath != null) {
                 storeFile = file(storePath)
-                storePassword = providers.environmentVariable("MYFLIX_KEYSTORE_PASSWORD").orNull
-                keyAlias = providers.environmentVariable("MYFLIX_KEY_ALIAS").orNull
-                keyPassword = providers.environmentVariable("MYFLIX_KEY_PASSWORD").orNull
+                storePassword = providers.environmentVariable("TORFILX_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("TORFILX_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("TORFILX_KEY_PASSWORD").orNull
             }
         }
     }
@@ -42,7 +42,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = if (providers.environmentVariable("MYFLIX_KEYSTORE").isPresent) {
+            signingConfig = if (providers.environmentVariable("TORFILX_KEYSTORE").isPresent) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
