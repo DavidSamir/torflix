@@ -42,8 +42,14 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # The runner image does not ship the newest platform, and the build compiles against 37.
+      # Note the id: platform 37 is published as the minor-versioned "android-37.0", so plain
+      # "android-37" does not exist and sdkmanager fails with "Failed to find package".
       - name: Install SDK packages
-        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-37.0" "build-tools;36.0.0" "platform-tools" ||
+            sdkmanager --install "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+          ls "$ANDROID_HOME/platforms"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
