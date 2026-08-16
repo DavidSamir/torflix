@@ -366,6 +366,7 @@ private fun Backdrop(item: MediaItem) {
             url = item.images.backdrop ?: item.images.poster,
             title = item.title,
             seed = item.id,
+            showGeneratedLabel = false,
             widthDp = 960.dp,
             heightDp = 540.dp,
             modifier = Modifier.fillMaxSize(),

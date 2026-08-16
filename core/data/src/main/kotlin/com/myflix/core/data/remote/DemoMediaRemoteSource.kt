@@ -42,6 +42,15 @@ class DemoMediaRemoteSource @Inject constructor() : MediaRemoteSource {
     /** Endpoints named here fail while the rest keep working (single failing row test). */
     val failingEndpoints: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /**
+     * Points every demo source at a real, playable file.
+     *
+     * The demo library itself has no media behind it, so this is how playback (decoding, seeking,
+     * progress saving) is exercised on a device without a media server (plan.md §12).
+     */
+    
+    var mediaUrlOverride: String? = null
+
     private val progress = ConcurrentHashMap<String, PlaybackProgress>()
     private val myList = ConcurrentHashMap.newKeySet<String>()
 
@@ -153,7 +162,9 @@ class DemoMediaRemoteSource @Inject constructor() : MediaRemoteSource {
         val durationMs = DemoLibrary.item(itemId)?.runtimeMs
             ?: DemoLibrary.episode(itemId)?.runtimeMs
             ?: (90 * 60_000L)
-        return DemoLibrary.playbackInfo(itemId, durationMs).copy(resume = progress[itemId])
+        val info = DemoLibrary.playbackInfo(itemId, durationMs).copy(resume = progress[itemId])
+        val override = mediaUrlOverride ?: return info
+        return info.copy(sources = info.sources.map { it.copy(url = override) })
     }
 
     override suspend fun progressSince(sinceMs: Long?): List<PlaybackProgress> {

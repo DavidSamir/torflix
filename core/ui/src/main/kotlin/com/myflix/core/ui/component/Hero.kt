@@ -96,6 +96,9 @@ fun HeroSection(
                 url = card.item.images.backdrop ?: card.item.images.poster,
                 title = card.item.title,
                 seed = card.item.id,
+                // The hero already shows the title in 40 sp; a second copy inside the generated
+                // backdrop would read as a rendering glitch.
+                showGeneratedLabel = false,
                 widthDp = 960.dp,
                 heightDp = 360.dp,
                 modifier = Modifier.fillMaxSize(),

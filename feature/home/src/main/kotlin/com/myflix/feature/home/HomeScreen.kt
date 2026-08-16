@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,6 +109,12 @@ private fun HomeContent(
     val dimens = LocalMyflixDimens.current
     val listState = rememberLazyListState()
     val heroPlayFocus = remember { FocusRequester() }
+
+    // Initial focus lands on the hero Play button, and only once content exists — requesting focus
+    // while the screen is still Loading silently fails (plan.md §5.2 rule 1).
+    LaunchedEffect(state.hero.isNotEmpty()) {
+        if (state.hero.isNotEmpty()) runCatching { heroPlayFocus.requestFocus() }
+    }
 
     Column(Modifier.fillMaxSize()) {
         state.staleWarning?.let { warning ->
