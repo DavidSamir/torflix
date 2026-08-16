@@ -1,6 +1,5 @@
 package com.torfilx.core.ui.util
 
-import com.torfilx.core.model.Episode
 import com.torfilx.core.model.MediaItem
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -43,16 +42,10 @@ object Format {
         }
     }
 
-    /** `S2:E4` — the compact form used on cards and in the player title. */
-    fun episodeCode(episode: Episode): String = "S${episode.seasonNumber}:E${episode.episodeNumber}"
-
     /** Meta line for details/hero: `2024 · 2h 14m · 16+ · Action, Sci-Fi`. */
     fun metaLine(item: MediaItem, maxGenres: Int = 2): String = buildList {
         item.year?.let { add(it.toString()) }
         runtime(item.runtimeMs).takeIf { it.isNotEmpty() }?.let { add(it) }
-        item.seasonCount?.let { count ->
-            add(if (count == 1) "1 season" else "$count seasons")
-        }
         item.ageRating?.takeIf { it.isNotBlank() }?.let { add(it) }
         item.genres.take(maxGenres).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(", ")) }
     }.joinToString(" · ")

@@ -86,8 +86,7 @@ fun LandscapeCard(
         onLongClick = onLongClick,
         widthDp = dimens.landscapeWidth,
         heightDp = dimens.landscapeHeight,
-        artworkUrl = card.episode?.thumbUrl
-            ?: card.item.images.thumb
+        artworkUrl = card.item.images.thumb
             ?: card.item.images.backdrop
             ?: card.item.images.poster,
         modifier = modifier,
@@ -240,10 +239,9 @@ private fun WatchedBadge(modifier: Modifier = Modifier) {
     }
 }
 
-/** Secondary line under a focused card: episode code and remaining time when relevant. */
+/** Secondary line under a focused card: what is left to watch, or the film.s year and runtime. */
 private fun MediaCard.subtitle(): String {
-    val parts = buildList {
-        episode?.let { add(Format.episodeCode(it)) }
+    val parts = buildList<String> {
         progress?.takeIf { it.fraction > 0f && !it.watched }?.let { p ->
             val remaining = Format.runtime(p.remainingMs)
             if (remaining.isNotEmpty()) add("$remaining left")
@@ -258,7 +256,6 @@ private fun MediaCard.subtitle(): String {
 
 private fun MediaCard.accessibilityDescription(): String = buildString {
     append(item.title)
-    episode?.let { append(", ${Format.episodeCode(it)}${it.title?.let { t -> ", $t" }.orEmpty()}") }
     item.year?.let { append(", $it") }
     progress?.let { p ->
         if (p.watched) {
