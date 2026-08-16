@@ -32,7 +32,6 @@ class PlayerViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val playableId: String = requireNotNull(savedStateHandle.get<String>(ARG_PLAYABLE_ID))
-    private val showId: String? = savedStateHandle.get<String>(ARG_SHOW_ID)
     private val startPositionMs: Long? = savedStateHandle.get<Long>(ARG_START_POSITION)?.takeIf { it >= 0 }
     private val sourceId: String? = savedStateHandle.get<String>(ARG_SOURCE_ID)?.takeIf { it.isNotBlank() }
 
@@ -59,7 +58,6 @@ class PlayerViewModel @Inject constructor(
             controller.open(
                 PlaybackRequest(
                     playableId = playableId,
-                    showId = showId,
                     startPositionMs = startPositionMs,
                     sourceId = sourceId,
                 ),
@@ -129,9 +127,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun skipIntro() = controller.skipIntro()
-    fun playNextEpisode() = controller.playNextEpisode(automatic = false)
-    fun playPreviousEpisode() = controller.playPreviousEpisode()
-    fun cancelNextEpisodeCountdown() = controller.cancelNextEpisodeCountdown()
     fun selectAudioTrack(id: String) = controller.selectAudioTrack(id)
     fun selectSubtitleTrack(id: String?) = controller.selectSubtitleTrack(id)
     fun setSpeed(speed: Float) = controller.setSpeed(speed)
@@ -170,7 +165,6 @@ class PlayerViewModel @Inject constructor(
 
     companion object {
         const val ARG_PLAYABLE_ID = "playableId"
-        const val ARG_SHOW_ID = "showId"
         const val ARG_START_POSITION = "startPositionMs"
         const val ARG_SOURCE_ID = "sourceId"
         private const val DISPLAY_SWITCH_SETTLE_MS = 1_500L

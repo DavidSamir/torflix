@@ -140,14 +140,6 @@ fun PlayerScreen(
                         viewModel.togglePlayPause(); true
                     }
 
-                    RemoteKeys.NEXT -> {
-                        viewModel.playNextEpisode(); true
-                    }
-
-                    RemoteKeys.PREVIOUS -> {
-                        viewModel.playPreviousEpisode(); true
-                    }
-
                     in RemoteKeys.CONFIRM_KEYS -> {
                         if (!controlsVisible) {
                             viewModel.togglePlayPause()
@@ -213,17 +205,6 @@ fun PlayerScreen(
             )
         }
 
-        state.nextEpisodeCountdownSeconds?.let { seconds ->
-            NextEpisodeCard(
-                seconds = seconds,
-                title = state.nextEpisode?.let { episode ->
-                    "${Format.episodeCode(episode)}${episode.title?.let { " · $it" }.orEmpty()}"
-                }.orEmpty(),
-                onPlayNow = viewModel::playNextEpisode,
-                onCancel = viewModel::cancelNextEpisodeCountdown,
-            )
-        }
-
         if (controlsVisible) {
             PlayerControls(
                 state = state,
@@ -231,7 +212,6 @@ fun PlayerScreen(
                 onPlayPause = viewModel::togglePlayPause,
                 onSeekTo = viewModel::seekTo,
                 onRestart = { viewModel.seekTo(0) },
-                onNextEpisode = viewModel::playNextEpisode,
                 onSelectAudio = viewModel::selectAudioTrack,
                 onSelectSubtitle = viewModel::selectSubtitleTrack,
                 onAspect = viewModel::setAspectMode,
@@ -353,51 +333,12 @@ private fun StillWatchingOverlay(onContinue: () -> Unit, onStop: () -> Unit) {
 }
 
 @Composable
-private fun NextEpisodeCard(
-    seconds: Int,
-    title: String,
-    onPlayNow: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .padding(end = 64.dp, bottom = 64.dp),
-        contentAlignment = Alignment.BottomEnd,
-    ) {
-        Column(
-            modifier = Modifier
-                .background(TorfilxColors.ScrimStrong)
-                .padding(20.dp)
-                .width(360.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "Next episode in $seconds…",
-                style = MaterialTheme.typography.titleMedium,
-                color = TorfilxColors.TextPrimary,
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = TorfilxColors.TextSecondary,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TvButton(text = "Play now", onClick = onPlayNow, autoFocus = true)
-                TvButton(text = "Cancel", onClick = onCancel, primary = false)
-            }
-        }
-    }
-}
-
-@Composable
 private fun PlayerControls(
     state: PlayerUiState,
     pendingSeekMs: Long?,
     onPlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onRestart: () -> Unit,
-    onNextEpisode: () -> Unit,
     onSelectAudio: (String) -> Unit,
     onSelectSubtitle: (String?) -> Unit,
     onAspect: (AspectMode) -> Unit,
@@ -460,9 +401,6 @@ private fun PlayerControls(
                 autoFocus = true,
             )
             TvButton(text = "↺ Restart", onClick = onRestart, primary = false)
-            if (state.nextEpisode != null) {
-                TvButton(text = "Next episode", onClick = onNextEpisode, primary = false)
-            }
             TvButton(
                 text = "Aspect: ${state.aspectMode.label}",
                 onClick = { onAspect(state.aspectMode.next()) },
