@@ -7,8 +7,8 @@ detekt = "1.23.8"
 
 # --- SDK levels (Fire OS 6 = API 25 is the floor, see plan.md §1) ------------
 minSdk = "25"
-compileSdk = "36"
-targetSdk = "36"
+compileSdk = "37"
+targetSdk = "37"
 
 # --- AndroidX / Compose ------------------------------------------------------
 androidxCore = "1.19.0"

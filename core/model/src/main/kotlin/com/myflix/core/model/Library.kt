@@ -1,0 +1,64 @@
+package com.myflix.core.model
+
+/** A card as displayed in a row or grid: the item plus whatever local state decorates it. */
+data class MediaCard(
+    val item: MediaItem,
+    val progress: PlaybackProgress? = null,
+    val inMyList: Boolean = false,
+    /** Continue Watching entries for a show point at a specific episode. */
+    val episode: Episode? = null,
+) {
+    val playableId: String get() = episode?.id ?: item.id
+}
+
+/** Home rows are ordered by the server, except the two the app owns locally (plan.md §11.3). */
+enum class HomeRowKind { CONTINUE_WATCHING, MY_LIST, RECENTLY_ADDED, GENRE, RECOMMENDED, GENERIC }
+
+data class HomeRow(
+    val id: String,
+    val title: String,
+    val kind: HomeRowKind = HomeRowKind.GENERIC,
+    val items: List<MediaCard> = emptyList(),
+)
+
+/** The featured items at the top of Home. */
+data class HeroItem(
+    val card: MediaCard,
+    val action: PlayAction,
+)
+
+enum class LibrarySort {
+    RECENTLY_ADDED,
+    ALPHABETICAL,
+    YEAR,
+    RATING,
+    ;
+
+    companion object {
+        val DEFAULT = RECENTLY_ADDED
+    }
+}
+
+enum class WatchedFilter { ALL, WATCHED, UNWATCHED }
+
+data class LibraryQuery(
+    val type: MediaType? = null,
+    val genre: String? = null,
+    val sort: LibrarySort = LibrarySort.DEFAULT,
+    val watched: WatchedFilter = WatchedFilter.ALL,
+)
+
+data class SearchResult(
+    val card: MediaCard,
+    val matchedOn: String? = null,
+)
+
+/** `GET /server/info` — drives "Test connection" and feature gating (plan.md §11.1). */
+data class ServerInfo(
+    val name: String,
+    val version: String,
+    val apiVersion: Int,
+    val features: Set<ServerFeature> = emptySet(),
+)
+
+enum class ServerFeature { TRANSCODE, SPRITES, MARKERS, SEARCH_PEOPLE, UNKNOWN }
