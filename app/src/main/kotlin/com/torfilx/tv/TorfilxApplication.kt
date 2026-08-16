@@ -1,6 +1,7 @@
 package com.torfilx.tv
 
 import android.app.Application
+import android.content.Context
 import android.content.ComponentCallbacks2
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -41,6 +42,10 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
         TorfilxLog.debugEnabled = BuildConfig.DEBUG
         TorfilxLog.i(TAG, "TORFILX ${BuildConfig.VERSION_NAME} starting")
 
+        // Installed first: a failure anywhere after this point restarts the app instead of showing
+        // the system.s "keeps stopping" dialog on the TV.
+        installCrashGuard()
+
         // Parse and index the catalogue before the first screen asks for it, off the main thread:
         // with a few thousand entries this is tens of milliseconds that must not land on a frame.
         applicationScope.launch { catalog.preload() }
@@ -77,7 +82,7 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
 
     /** Low-RAM devices (1.5 GB Fire Sticks) get a smaller share of a much smaller heap. */
     private fun memoryCachePercent(): Double {
-        val activityManager = getSystemService(android.app.ActivityManager::class.java)
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
         val lowRam = activityManager?.isLowRamDevice == true ||
             (activityManager?.memoryClass ?: 0) <= LOW_MEMORY_CLASS_MB
         return if (lowRam) LOW_RAM_CACHE_PERCENT else MEMORY_CACHE_PERCENT

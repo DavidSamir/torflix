@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -82,11 +85,20 @@ fun Artwork(
             .build()
     }
 
+    // A poster URL can be dead, or the TV can be offline. Either way the card must still look
+    // deliberate, so a failed load falls back to the same generated art as a missing poster.
+    var failed by remember(url) { mutableStateOf(false) }
+    if (failed) {
+        GeneratedArtwork(title = if (showGeneratedLabel) title else "", seed = seed, modifier = modifier)
+        return
+    }
+
     Box(modifier.background(TorfilxColors.SurfaceLow)) {
         AsyncImage(
             model = request,
             contentDescription = contentDescription,
             contentScale = contentScale,
+            onError = { failed = true },
             modifier = Modifier.fillMaxSize(),
         )
     }

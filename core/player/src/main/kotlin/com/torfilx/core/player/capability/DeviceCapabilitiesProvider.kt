@@ -178,7 +178,10 @@ class DeviceCapabilitiesProvider @Inject constructor(
         val refreshRates = modes.map { it.refreshRate }.distinct().sorted()
 
         val hdrTypes = mutableSetOf<HdrType>()
-        runCatching {
+        // HDR capability reporting arrived in API 24; on Fire OS 6 (API 25) it exists, but the guard
+        // keeps this safe on anything older and on devices that return null.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) runCatching {
+            @Suppress("DEPRECATION")
             display.hdrCapabilities?.supportedHdrTypes?.forEach { type ->
                 when (type) {
                     Display.HdrCapabilities.HDR_TYPE_HDR10 -> hdrTypes += HdrType.HDR10

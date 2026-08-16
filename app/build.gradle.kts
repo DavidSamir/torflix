@@ -21,7 +21,16 @@ android {
     }
 
     signingConfigs {
+        // v1 (JAR) signing is required by Android 6 and older — Fire OS 5 sticks reject a v2-only
+        // APK with "There was a problem parsing the package".
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+        }
         create("release") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
             // Populated from env for CI; falls back to the debug key for local sideloading.
             val storePath = providers.environmentVariable("TORFILX_KEYSTORE").orNull
             if (storePath != null) {
@@ -82,9 +91,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.profileinstaller)
-    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.hilt.work)
-    ksp(libs.androidx.hilt.compiler)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
