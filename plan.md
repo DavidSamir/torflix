@@ -1,10 +1,43 @@
-# MYFLIX — Fire TV Client: Engineering Plan
+# TORFILX — Fire TV Client: Engineering Plan
 
 > Scope: **the Fire TV application only.** The local media server (scanning, metadata,
 > transcoding, storage) is a separate project. This document defines only the contract the
 > app *requires* from that server, so the app can be built against a fake/in-memory
 > implementation first and swapped to the real server later.
 
+
+---
+
+## Status (implementation log)
+
+The app is **built and running on an Android TV emulator**. Items marked ✅ were verified by building,
+unit-testing and/or driving the app with the D-pad on device.
+
+| Milestone | State | Evidence |
+|---|---|---|
+| M0 — Skeleton (14 modules, convention plugins, manifest, banner, splash) | ✅ | `:app:assembleDebug` green; app launches and stays foreground |
+| M1 — Design system & focus (theme, cards, rows, hero, skeletons, focus rules) | ✅ | Focus scale/border/label verified on device via `adb input keyevent` |
+| M2 — Browse & details (Home, grids, details, search, settings) | ✅ | Demo library of 130+ items exercises empty/error/missing-artwork paths |
+| M3 — Player (Media3, MediaSession, controls, tracks, markers, resume, typed errors) | ✅ | Real H.264 playback + error overlay verified on device |
+| M4 — Search & settings (on-screen keyboard, server URL/token, capability report) | ✅ | Verified on device |
+| M5 — Server integration (Retrofit API §11, delta sync, outbox) | ✅ code / ⏳ untested against a real server (none exists yet) | Unit-tested against `FakeMediaRemoteSource` |
+| M6 — Hardening (baseline profile, codec matrix on real hardware, VoiceView pass) | ⏳ | 78 unit tests green; codec matrix needs a physical Fire TV |
+| **M7 — Hybrid torrent playback + sharing (§16)** | ✅ | Magnet → metadata → sequential download → loopback stream → ExoPlayer buffering, on device |
+
+### Bugs found by running it, not by writing it
+
+1. **OkHttp interceptors must throw `IOException`** — `DataError` extended `Exception`, so "no server
+   configured" crashed the process from the dispatcher thread. `DataError` is now an `IOException`.
+2. **`focusable()` before `clickable()` breaks OK** — every control highlighted but ignored
+   DPAD_CENTER, because `clickable` installs its own focus target and key handler. Duplicate
+   `focusable()` removed everywhere.
+3. **Media requests used the API HTTP client** — which rewrites URLs to the configured server and
+   applies a 15 s read timeout, killing any long stream. Playback now uses the media client, and the
+   auth token is only attached to the configured server's host.
+4. **Home never recovered after the server was configured** — the error state persisted until the
+   user found Retry. Home now re-refreshes when the server URL or active source changes.
+5. **A tab's underline stretched the whole bar**, hiding every other tab (`fillMaxWidth` inside a
+   wrap-content `Box`).
 ---
 
 ## 0. Guiding decisions (read this first)
@@ -77,7 +110,7 @@ Rule: features never depend on each other; they depend on `core:*` and expose a 
 
 <application android:banner="@drawable/banner"   <!-- 320x180 px, required for launcher tile -->
              android:networkSecurityConfig="@xml/network_security_config"
-             android:theme="@style/Theme.Myflix.Splash">
+             android:theme="@style/Theme.Torfilx.Splash">
   <activity android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
