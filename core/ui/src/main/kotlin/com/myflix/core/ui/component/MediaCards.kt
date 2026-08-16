@@ -131,7 +131,6 @@ private fun FocusableMediaCard(
                     color = if (isFocused) MyflixColors.Focus else MyflixColors.Transparent,
                     shape = shape,
                 )
-                .focusable(interactionSource = source)
                 .clickable(
                     interactionSource = source,
                     indication = null,

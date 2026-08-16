@@ -4,11 +4,15 @@ package com.myflix.core.common.error
  * Every failure the data layer can produce, as a closed set. Screens switch on this to choose copy
  * and recovery actions, so a new failure mode cannot silently fall through to a generic message
  * (plan.md §3, §10).
+ *
+ * It extends [java.io.IOException] deliberately: these errors are thrown from inside OkHttp
+ * interceptors, and OkHttp only contracts to deliver `IOException` to the caller — any other
+ * exception type escapes on the dispatcher thread and crashes the process.
  */
 sealed class DataError(
     message: String? = null,
     cause: Throwable? = null,
-) : Exception(message, cause) {
+) : java.io.IOException(message, cause) {
 
     /** The server could not be reached at all: no route, refused, DNS, timeout, TLS handshake. */
     class ServerUnreachable(message: String? = null, cause: Throwable? = null) :

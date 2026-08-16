@@ -24,6 +24,13 @@ detekt {
     )
 }
 
+// A module with no unit tests yet (pure-UI feature modules) must not fail the aggregate task.
+subprojects {
+    tasks.withType<Test>().configureEach {
+        failOnNoDiscoveredTests = false
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

@@ -36,6 +36,10 @@ suspend fun <T> apiCall(
         block()
     } catch (cancellation: CancellationException) {
         throw cancellation
+    } catch (dataError: DataError) {
+        // Thrown by our own interceptors (e.g. no server configured). It is already typed, and it
+        // must not be re-mapped by the IOException branch below.
+        throw dataError
     } catch (timeout: SocketTimeoutException) {
         throw DataError.Timeout("Server did not respond in time", timeout)
     } catch (unknownHost: UnknownHostException) {

@@ -10,6 +10,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -94,9 +97,11 @@ private fun NavTab(
         label = "tabUnderline",
     )
 
-    Box(
+    // The column is sized to the full single-line label (IntrinsicSize.Max); without it the underline
+    // would expand the tab to the whole bar and push the other tabs off screen.
+    Column(
         modifier = Modifier
-            .focusable(interactionSource = interactionSource)
+            .width(IntrinsicSize.Max)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp)
             .semantics {
@@ -104,19 +109,20 @@ private fun NavTab(
                 this.selected = selected
                 contentDescription = item.label
             },
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = item.label,
             style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
             color = when {
-                isFocused -> MyflixColors.TextPrimary
-                selected -> MyflixColors.TextPrimary
+                isFocused || selected -> MyflixColors.TextPrimary
                 else -> MyflixColors.TextSecondary
             },
         )
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .padding(top = 4.dp)
                 .fillMaxWidth()
                 .height(3.dp)
                 .alpha(underlineAlpha)

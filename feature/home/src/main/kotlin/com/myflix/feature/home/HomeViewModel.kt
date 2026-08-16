@@ -19,6 +19,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -90,7 +94,16 @@ class HomeViewModel @Inject constructor(
     )
 
     init {
-        refresh()
+        // Re-refresh whenever the source of content changes. Without this, configuring the server
+        // (or switching to the demo library) leaves Home showing the old error until the user
+        // finds the Retry button — the single most likely first-run dead end.
+        combine(
+            settingsRepository.settings.map { it.serverUrl },
+            settingsRepository.demoMode,
+        ) { url, demo -> url to demo }
+            .distinctUntilChanged()
+            .onEach { refresh() }
+            .launchIn(viewModelScope)
     }
 
     fun refresh() {

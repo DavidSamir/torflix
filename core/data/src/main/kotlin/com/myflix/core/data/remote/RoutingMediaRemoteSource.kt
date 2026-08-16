@@ -1,6 +1,5 @@
 package com.myflix.core.data.remote
 
-import com.myflix.core.common.di.ApplicationScope
 import com.myflix.core.model.DeviceCapabilities
 import com.myflix.core.model.Episode
 import com.myflix.core.model.HomeRow
@@ -13,9 +12,7 @@ import com.myflix.core.model.ServerInfo
 import com.myflix.core.data.settings.SettingsRepository
 import com.myflix.core.network.ItemDetailsResponse
 import com.myflix.core.network.LibraryPage
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,20 +26,14 @@ import javax.inject.Singleton
 class RoutingMediaRemoteSource @Inject constructor(
     private val network: NetworkMediaRemoteSource,
     private val demo: DemoMediaRemoteSource,
-    settingsRepository: SettingsRepository,
-    @ApplicationScope scope: CoroutineScope,
+    private val settingsRepository: SettingsRepository,
 ) : MediaRemoteSource {
 
-    @Volatile
-    private var demoMode: Boolean = false
-
-    init {
-        settingsRepository.demoMode
-            .onEach { demoMode = it }
-            .launchIn(scope)
-    }
-
-    private fun delegate(): MediaRemoteSource = if (demoMode) demo else network
+    // Read the flag per call rather than from a cached field: a request issued in the same frame as
+    // the setting change must already use the new source, otherwise the first refresh after
+    // switching to the demo library still hits the (unconfigured) server.
+    private suspend fun delegate(): MediaRemoteSource =
+        if (settingsRepository.demoMode.first()) demo else network
 
     override suspend fun serverInfo(): ServerInfo = delegate().serverInfo()
 

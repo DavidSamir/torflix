@@ -44,6 +44,8 @@ fun Artwork(
     title: String,
     modifier: Modifier = Modifier,
     seed: String = title,
+    /** Generated fallbacks draw the title; switch it off where the title is already on screen. */
+    showGeneratedLabel: Boolean = true,
     widthDp: Dp? = null,
     heightDp: Dp? = null,
     contentScale: ContentScale = ContentScale.Crop,
@@ -51,7 +53,11 @@ fun Artwork(
 ) {
     val isGenerated = url.isNullOrBlank() || url.startsWith(DEMO_SCHEME)
     if (isGenerated) {
-        GeneratedArtwork(title = title, seed = seed, modifier = modifier)
+        GeneratedArtwork(
+            title = if (showGeneratedLabel) title else "",
+            seed = seed,
+            modifier = modifier,
+        )
         return
     }
 
@@ -110,15 +116,17 @@ private fun GeneratedArtwork(title: String, seed: String, modifier: Modifier) {
         modifier = modifier.background(Brush.linearGradient(colors)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MyflixColors.TextPrimary,
-            textAlign = TextAlign.Center,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
+        if (title.isNotEmpty()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MyflixColors.TextPrimary,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+        }
     }
 }
 

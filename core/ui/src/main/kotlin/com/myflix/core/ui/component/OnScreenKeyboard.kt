@@ -151,7 +151,6 @@ private fun KeyboardKey(
                 shape = RoundedCornerShape(6.dp),
             )
             .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
-            .focusable(interactionSource = interactionSource)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .semantics { contentDescription = description ?: label },
         contentAlignment = Alignment.Center,

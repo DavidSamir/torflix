@@ -69,6 +69,8 @@ fun PlayerScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val controlsVisible by viewModel.controlsVisible.collectAsStateWithLifecycle()
     val pendingSeek by viewModel.pendingSeekMs.collectAsStateWithLifecycle()
+    val displaySwitching by viewModel.displaySwitching.collectAsStateWithLifecycle()
+    val autoSkipIntro by viewModel.skipIntroAutomatically.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val rootFocus = remember { FocusRequester() }
@@ -93,6 +95,11 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+
+    // Auto-skip fires once per intro window, not on every frame of it.
+    LaunchedEffect(state.showSkipIntro, autoSkipIntro) {
+        if (autoSkipIntro && state.showSkipIntro) viewModel.skipIntro()
+    }
 
     BackHandler(enabled = true) {
         if (controlsVisible) {
@@ -160,6 +167,11 @@ fun PlayerScreen(
             },
     ) {
         VideoSurface(viewModel = viewModel, aspectMode = state.aspectMode)
+
+        // While the TV renegotiates HDMI after a refresh-rate switch it shows garbage; cover it.
+        if (displaySwitching) {
+            Box(Modifier.fillMaxSize().background(MyflixColors.Background))
+        }
 
         if (state.isBuffering) {
             BufferingIndicator()

@@ -8,6 +8,7 @@ import com.myflix.core.player.AspectMode
 import com.myflix.core.player.PlaybackController
 import com.myflix.core.player.PlaybackRequest
 import com.myflix.core.player.PlayerUiState
+import com.myflix.core.player.display.DisplayModeController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,7 @@ class PlayerViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val controller: PlaybackController,
     private val settingsRepository: SettingsRepository,
+    private val displayModeController: DisplayModeController,
 ) : ViewModel() {
 
     private val playableId: String = requireNotNull(savedStateHandle.get<String>(ARG_PLAYABLE_ID))
@@ -45,8 +47,14 @@ class PlayerViewModel @Inject constructor(
     val player get() = controller.player
     val currentFrameRate: Float? get() = controller.currentFrameRate
 
+    private val _skipIntroAutomatically = MutableStateFlow(false)
+    val skipIntroAutomatically: StateFlow<Boolean> = _skipIntroAutomatically.asStateFlow()
+
     init {
         viewModelScope.launch {
+            val settings = settingsRepository.settings.first()
+            _skipIntroAutomatically.value = settings.skipIntroAutomatically
+
             controller.open(
                 PlaybackRequest(
                     playableId = playableId,
@@ -54,11 +62,27 @@ class PlayerViewModel @Inject constructor(
                     startPositionMs = startPositionMs,
                 ),
             )
-            if (settingsRepository.settings.first().skipIntroAutomatically) {
-                // Handled in the screen: it watches showSkipIntro and skips once.
+
+            // Frame-rate matching happens after the source is known (it carries the fps) and before
+            // the first frame is visible (plan.md §7.3).
+            if (settings.frameRateMatching) {
+                val switching = displayModeController.applyForContent(
+                    contentFrameRate = controller.currentFrameRate,
+                    enabled = true,
+                )
+                if (switching) {
+                    _displaySwitching.value = true
+                    kotlinx.coroutines.delay(DISPLAY_SWITCH_SETTLE_MS)
+                    _displaySwitching.value = false
+                }
             }
         }
     }
+
+    private val _displaySwitching = MutableStateFlow(false)
+
+    /** True while the TV is resyncing HDMI after a mode switch; the screen stays black. */
+    val displaySwitching: StateFlow<Boolean> = _displaySwitching.asStateFlow()
 
     fun showControls() {
         _controlsVisible.value = true
@@ -114,13 +138,17 @@ class PlayerViewModel @Inject constructor(
     fun noteUserInput() = controller.noteUserInput()
     fun dismissStillWatching(continueWatching: Boolean) = controller.dismissStillWatching(continueWatching)
 
-    /** Called when the player screen is left: saves progress and frees the decoder. */
-    fun leavePlayer() = controller.stop(release = true)
+    /** Called when the player screen is left: saves progress, frees the decoder, restores the display. */
+    fun leavePlayer() {
+        displayModeController.reset()
+        controller.stop(release = true)
+    }
 
     /** Called when the app goes to the background: TV video apps pause rather than play blind. */
     fun onBackground() = controller.pause()
 
     override fun onCleared() {
+        displayModeController.reset()
         controller.stop(release = true)
         super.onCleared()
     }
@@ -129,5 +157,6 @@ class PlayerViewModel @Inject constructor(
         const val ARG_PLAYABLE_ID = "playableId"
         const val ARG_SHOW_ID = "showId"
         const val ARG_START_POSITION = "startPositionMs"
+        private const val DISPLAY_SWITCH_SETTLE_MS = 1_500L
     }
 }

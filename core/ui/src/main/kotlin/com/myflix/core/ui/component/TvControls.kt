@@ -91,7 +91,9 @@ fun TvButton(
                 shape = RoundedCornerShape(6.dp),
             )
             .focusRequester(requester)
-            .focusable(enabled = enabled, interactionSource = interactionSource)
+            // `clickable` already makes the node focusable AND handles DPAD_CENTER/Enter. A separate
+            // `focusable()` steals the focus target, so the control highlights but OK does nothing —
+            // the classic "the remote is dead" bug on TV.
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
@@ -149,7 +151,6 @@ fun TvChip(
                 },
                 shape = RoundedCornerShape(20.dp),
             )
-            .focusable(interactionSource = interactionSource)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {

@@ -11,7 +11,7 @@ import com.myflix.core.common.log.MyflixLog
 import com.myflix.core.data.settings.SettingsRepository
 import com.myflix.core.data.sync.SyncScheduler
 import com.myflix.core.player.PlaybackController
-import com.myflix.core.player.display.FrameRateMatcher
+import com.myflix.core.player.display.DisplayModeController
 import com.myflix.core.player.service.PlaybackService
 import com.myflix.core.ui.theme.MyflixTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -40,9 +40,7 @@ class MainActivity : ComponentActivity() {
     lateinit var playbackController: PlaybackController
 
     @Inject
-    lateinit var frameRateMatcher: FrameRateMatcher
-
-    private var frameRateApplied = false
+    lateinit var displayModeController: DisplayModeController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -54,6 +52,9 @@ class MainActivity : ComponentActivity() {
                 MyflixApp(onExitApp = { finish() })
             }
         }
+
+        // Debug-only switches (demo library, server URL) delivered as intent extras.
+        handleDebugIntent(intent)
 
         // Kick a background library refresh so Home is current by the time the user has read the
         // hero, without blocking the first frame.
@@ -67,8 +68,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** `singleTask` delivers a re-launch here rather than through `onCreate`. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDebugIntent(intent)
+    }
+
     override fun onStart() {
         super.onStart()
+        displayModeController.attach(this)
         // The media session must exist while the app is in the foreground so the remote's transport
         // keys and Alexa reach the player (plan.md §7.1).
         runCatching { startService(Intent(this, PlaybackService::class.java)) }
@@ -80,23 +89,8 @@ class MainActivity : ComponentActivity() {
         if (isFinishing) {
             playbackController.stop(release = true)
         }
-        if (frameRateApplied) {
-            frameRateMatcher.reset(this)
-            frameRateApplied = false
-        }
-    }
-
-    /**
-     * Applies display frame-rate matching for the content that is about to play.
-     *
-     * Called by the player screen through [PlaybackController]; kept on the activity because only a
-     * window can request a display mode.
-     */
-    fun applyFrameRateMatching(contentFrameRate: Float?) {
-        lifecycleScope.launch {
-            if (!settingsRepository.settings.first().frameRateMatching) return@launch
-            frameRateApplied = frameRateMatcher.matchFrameRate(this@MainActivity, contentFrameRate)
-        }
+        // Always hand the TV back its original display mode when we lose the screen.
+        displayModeController.detach(this)
     }
 
     /**

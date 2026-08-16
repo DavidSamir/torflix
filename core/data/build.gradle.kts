@@ -22,5 +22,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(projects.core.testing)
+    testImplementation(libs.mockk)
     androidTestImplementation(libs.androidx.test.core)
 }

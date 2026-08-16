@@ -301,7 +301,6 @@ private fun EpisodeRow(
             .padding(horizontal = dimens.overscanHorizontal)
             .clip(RoundedCornerShape(dimens.cornerRadius))
             .background(if (isFocused) MyflixColors.SurfaceHigh else MyflixColors.Transparent)
-            .focusable(interactionSource = interactionSource)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
             .onMenuKey(onToggleWatched)
             .padding(12.dp),
