@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.myflix.core.common.log.MyflixLog
 import com.myflix.core.model.AppSettings
+import com.myflix.core.network.di.MediaHttpClient
 import com.myflix.core.player.capability.DeviceCapabilitiesProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.OkHttpClient
@@ -34,7 +35,9 @@ private const val TAG = "PlayerFactory"
 @Singleton
 class PlayerFactory @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val okHttpClient: Provider<OkHttpClient>,
+    // The media client, not the API one: the API client rewrites request URLs to the configured
+    // server (destroying absolute media URLs) and has a 15 s read timeout that would abort a stream.
+    @MediaHttpClient private val okHttpClient: Provider<OkHttpClient>,
     private val capabilitiesProvider: DeviceCapabilitiesProvider,
 ) {
 

@@ -48,7 +48,7 @@ class DemoMediaRemoteSource @Inject constructor() : MediaRemoteSource {
      * The demo library itself has no media behind it, so this is how playback (decoding, seeking,
      * progress saving) is exercised on a device without a media server (plan.md §12).
      */
-    
+    @Volatile
     var mediaUrlOverride: String? = null
 
     private val progress = ConcurrentHashMap<String, PlaybackProgress>()

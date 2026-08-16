@@ -122,18 +122,33 @@ internal class BaseUrlInterceptor(
     }
 }
 
-/** Adds the bearer token, when one is configured. */
+/**
+ * Adds the bearer token, when one is configured.
+ *
+ * The token is only attached to requests aimed at the configured server's host. Media and image URLs
+ * are supplied by the server and could in principle point anywhere; sending the credential to a
+ * third-party host would leak it.
+ */
 internal class AuthInterceptor(
     private val configProvider: ServerConfigProvider,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val token = configProvider.current()?.token
-        val request = if (token.isNullOrBlank()) {
-            chain.request()
-        } else {
-            chain.request().newBuilder().header("Authorization", "Bearer $token").build()
-        }
-        return chain.proceed(request)
+        val config = configProvider.current()
+        val token = config?.token
+        val serverHost = config?.baseUrl?.toHttpUrlOrNull()?.host
+
+        val request = chain.request()
+        val shouldAuthenticate = !token.isNullOrBlank() &&
+            serverHost != null &&
+            request.url.host.equals(serverHost, ignoreCase = true)
+
+        return chain.proceed(
+            if (shouldAuthenticate) {
+                request.newBuilder().header("Authorization", "Bearer $token").build()
+            } else {
+                request
+            },
+        )
     }
 }
 

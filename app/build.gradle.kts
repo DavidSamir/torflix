@@ -12,6 +12,7 @@ android {
         applicationId = "com.myflix.tv"
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "com.myflix.tv.HiltTestRunner"
         resourceConfigurations += setOf("en", "he")
     }
 
@@ -92,4 +93,7 @@ dependencies {
     testImplementation(projects.core.testing)
     androidTestImplementation(projects.core.testing)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.hilt.android.testing)
+    androidTestImplementation(libs.androidx.test.rules)
+    kspAndroidTest(libs.hilt.compiler)
 }

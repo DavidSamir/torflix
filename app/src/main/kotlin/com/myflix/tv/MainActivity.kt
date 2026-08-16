@@ -9,6 +9,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.myflix.core.common.log.MyflixLog
 import com.myflix.core.data.settings.SettingsRepository
+import com.myflix.core.data.remote.DemoMediaRemoteSource
 import com.myflix.core.data.sync.SyncScheduler
 import com.myflix.core.player.PlaybackController
 import com.myflix.core.player.display.DisplayModeController
@@ -41,6 +42,10 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var displayModeController: DisplayModeController
+
+    /** Debug-only: lets the demo library point at a real media file (see [handleDebugIntent]). */
+    @Inject
+    lateinit var demoRemoteSource: DemoMediaRemoteSource
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()

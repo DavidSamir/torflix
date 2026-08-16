@@ -24,6 +24,12 @@ internal fun MainActivity.handleDebugIntent(intent: Intent?) {
         lifecycleScope.launch { settingsRepository.setDemoMode(enabled) }
     }
 
+    if (intent.hasExtra(EXTRA_DEMO_MEDIA)) {
+        val url = intent.getStringExtra(EXTRA_DEMO_MEDIA)
+        MyflixLog.i("Debug", "Demo media source overridden")
+        demoRemoteSource.mediaUrlOverride = url?.takeIf { it.isNotBlank() }
+    }
+
     if (intent.hasExtra(EXTRA_SERVER_URL)) {
         val url = intent.getStringExtra(EXTRA_SERVER_URL).orEmpty()
         MyflixLog.i("Debug", "Server URL set via intent extra")
@@ -33,3 +39,4 @@ internal fun MainActivity.handleDebugIntent(intent: Intent?) {
 
 private const val EXTRA_DEMO_MODE = "myflix_demo"
 private const val EXTRA_SERVER_URL = "myflix_server"
+private const val EXTRA_DEMO_MEDIA = "myflix_demo_media"
