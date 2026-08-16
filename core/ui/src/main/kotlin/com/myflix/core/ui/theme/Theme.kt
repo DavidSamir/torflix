@@ -1,6 +1,5 @@
 package com.myflix.core.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -131,11 +130,8 @@ fun MyflixTheme(
     dimens: MyflixDimens = MyflixDimens(),
     content: @Composable () -> Unit,
 ) {
-    // The app is dark-only by design: a bright UI in a dark room is hostile, and TVs are watched in
-    // the dark. `isSystemInDarkTheme` is intentionally ignored.
-    @Suppress("UNUSED_EXPRESSION")
-    isSystemInDarkTheme
-
+    // The app is dark-only by design: a bright UI in a dark room is hostile, and a TV is watched in
+    // the dark. The system light/dark setting is intentionally not consulted.
     CompositionLocalProvider(LocalMyflixDimens provides dimens) {
         MaterialTheme(
             colorScheme = MyflixColorScheme,
