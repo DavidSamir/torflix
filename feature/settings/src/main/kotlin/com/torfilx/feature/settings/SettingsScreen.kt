@@ -25,7 +25,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.torfilx.core.model.ConnectionTestResult
 import com.torfilx.core.model.QualityPreference
 import com.torfilx.core.ui.component.KeyboardLayout
 import com.torfilx.core.ui.component.OnScreenKeyboard
@@ -37,7 +36,7 @@ import com.torfilx.core.ui.theme.LocalTorfilxDimens
 import com.torfilx.core.ui.theme.TorfilxColors
 
 /** Which text field the on-screen keyboard is currently editing. */
-private enum class EditingField { NONE, SERVER_URL, TOKEN, AUDIO_LANGUAGE, SUBTITLE_LANGUAGE }
+private enum class EditingField { NONE, AUDIO_LANGUAGE, SUBTITLE_LANGUAGE }
 
 @Composable
 fun SettingsScreen(
@@ -53,13 +52,11 @@ fun SettingsScreen(
     fun startEditing(field: EditingField, initial: String) {
         editing = field
         buffer = initial
-        keyboardLayout = if (field == EditingField.SERVER_URL) KeyboardLayout.NUMBERS else KeyboardLayout.LATIN
+        keyboardLayout = KeyboardLayout.LATIN
     }
 
     fun commit() {
         when (editing) {
-            EditingField.SERVER_URL -> viewModel.setServerUrl(buffer)
-            EditingField.TOKEN -> viewModel.setApiToken(buffer)
             EditingField.AUDIO_LANGUAGE -> viewModel.setAudioLanguage(buffer)
             EditingField.SUBTITLE_LANGUAGE -> viewModel.setSubtitleLanguage(buffer)
             EditingField.NONE -> Unit
@@ -89,50 +86,6 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.headlineLarge,
                     color = TorfilxColors.TextPrimary,
                 )
-            }
-
-            item(key = "server") {
-                SettingsSection("Media server") {
-                    SettingsValueRow(
-                        label = "Server address",
-                        value = state.settings.serverUrl.ifBlank { "Not set" },
-                        onClick = { startEditing(EditingField.SERVER_URL, state.settings.serverUrl) },
-                    )
-                    SettingsValueRow(
-                        label = "API token",
-                        value = if (state.tokenSet) "Set" else "Not set",
-                        onClick = { startEditing(EditingField.TOKEN, "") },
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(
-                            text = if (state.isTesting) "Testing…" else "Test connection",
-                            onClick = viewModel::testConnection,
-                            enabled = !state.isTesting,
-                        )
-                        TvChip(
-                            text = if (state.demoMode) "Demo library: on" else "Demo library: off",
-                            selected = state.demoMode,
-                            onClick = { viewModel.setDemoMode(!state.demoMode) },
-                        )
-                    }
-                    state.connectionTest?.let { result ->
-                        Text(
-                            text = when (result) {
-                                is ConnectionTestResult.Success ->
-                                    "Connected to ${result.info.name} ${result.info.version} " +
-                                        "(API v${result.info.apiVersion})"
-
-                                is ConnectionTestResult.Failure -> result.reason
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (result is ConnectionTestResult.Success) {
-                                TorfilxColors.Success
-                            } else {
-                                TorfilxColors.Error
-                            },
-                        )
-                    }
-                }
             }
 
             item(key = "playback") {
@@ -247,7 +200,16 @@ fun SettingsScreen(
             item(key = "maintenance") {
                 SettingsSection("Maintenance") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TvButton(text = "Clear cached library", onClick = viewModel::clearCache, primary = false)
+                        TvButton(
+                            text = "Clear downloaded data",
+                            onClick = viewModel::clearDownloadedData,
+                            primary = false,
+                        )
+                        TvButton(
+                            text = "Clear search history",
+                            onClick = viewModel::clearSearchHistory,
+                            primary = false,
+                        )
                         TvButton(text = "Export logs", onClick = viewModel::exportLogs, primary = false)
                     }
                     state.message?.let { message ->
@@ -268,8 +230,6 @@ fun SettingsScreen(
             ) {
                 Text(
                     text = when (editing) {
-                        EditingField.SERVER_URL -> "Server address (e.g. 192.168.1.10:8096)"
-                        EditingField.TOKEN -> "API token"
                         EditingField.AUDIO_LANGUAGE -> "Audio language code (e.g. en, he)"
                         EditingField.SUBTITLE_LANGUAGE -> "Subtitle language code"
                         EditingField.NONE -> ""
@@ -280,10 +240,7 @@ fun SettingsScreen(
                 SearchField(value = buffer, placeholder = "Type using the keys below")
                 OnScreenKeyboard(
                     onCharacter = { character ->
-                        buffer += if (editing == EditingField.SERVER_URL ||
-                            editing == EditingField.AUDIO_LANGUAGE ||
-                            editing == EditingField.SUBTITLE_LANGUAGE
-                        ) {
+                        buffer += if (editing != EditingField.NONE) {
                             character.lowercaseChar()
                         } else {
                             character

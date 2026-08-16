@@ -3,16 +3,13 @@ package com.torfilx.feature.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.torfilx.core.common.error.DataError
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.data.repository.MediaRepository
 import com.torfilx.core.data.settings.SettingsRepository
 import com.torfilx.core.data.torrent.TorrentCoordinator
-import com.torfilx.core.torrent.SharingStats
 import com.torfilx.core.model.AppSettings
-import com.torfilx.core.model.ConnectionTestResult
 import com.torfilx.core.model.QualityPreference
-import com.torfilx.core.model.ServerUrlNormalizer
+import com.torfilx.core.torrent.SharingStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,19 +24,21 @@ import javax.inject.Inject
 private const val TAG = "SettingsVM"
 
 data class SettingsUiState(
+    val settings: AppSettings = AppSettings(),
     val sharingConsent: Boolean = false,
     val seedingEnabled: Boolean = true,
     val storageFraction: Float = 0.5f,
     val sharingStats: SharingStats = SharingStats(),
     val torrentAvailable: Boolean = false,
-    val settings: AppSettings = AppSettings(),
-    val tokenSet: Boolean = false,
-    val demoMode: Boolean = false,
-    val connectionTest: ConnectionTestResult? = null,
-    val isTesting: Boolean = false,
     val message: String? = null,
 )
 
+/**
+ * Settings for a server-less app: playback preferences, language, and everything about sharing.
+ *
+ * There is no server address, token or connection test any more — the catalogue ships with the app
+ * and playback happens over BitTorrent.
+ */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -48,36 +47,25 @@ class SettingsViewModel @Inject constructor(
     private val torrentCoordinator: TorrentCoordinator,
 ) : ViewModel() {
 
-    private val connectionTest = MutableStateFlow<ConnectionTestResult?>(null)
-    private val testing = MutableStateFlow(false)
     private val message = MutableStateFlow<String?>(null)
-    private val tokenSet = MutableStateFlow(settingsRepository.apiToken() != null)
-
-    private val sharingState = combine(
-        settingsRepository.sharingConsent,
-        settingsRepository.seedingEnabled,
-        settingsRepository.storageFraction,
-        torrentCoordinator.stats,
-    ) { consent, seeding, fraction, stats -> SharingSnapshot(consent, seeding, fraction, stats) }
 
     val uiState: StateFlow<SettingsUiState> = combine(
         settingsRepository.settings,
-        settingsRepository.demoMode,
-        combine(connectionTest, testing, message) { test, isTesting, msg -> Triple(test, isTesting, msg) },
-        tokenSet,
-        sharingState,
-    ) { settings, demo, (test, isTesting, msg), hasToken, sharing ->
+        combine(
+            settingsRepository.sharingConsent,
+            settingsRepository.seedingEnabled,
+            settingsRepository.storageFraction,
+            torrentCoordinator.stats,
+        ) { consent, seeding, fraction, stats -> SharingSnapshot(consent, seeding, fraction, stats) },
+        message,
+    ) { settings, sharing, msg ->
         SettingsUiState(
+            settings = settings,
             sharingConsent = sharing.consent,
             seedingEnabled = sharing.seeding,
             storageFraction = sharing.fraction,
             sharingStats = sharing.stats,
             torrentAvailable = torrentCoordinator.isAvailable(),
-            settings = settings,
-            tokenSet = hasToken,
-            demoMode = demo,
-            connectionTest = test,
-            isTesting = isTesting,
             message = msg,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), SettingsUiState())
@@ -89,16 +77,14 @@ class SettingsViewModel @Inject constructor(
         val stats: SharingStats,
     )
 
-    /**
-     * Turning sharing off stops uploading immediately; the engine is shut down by the coordinator.
-     */
+    /** Turning sharing off stops uploading immediately and makes torrent playback unavailable. */
     fun setSharingConsent(consented: Boolean) {
         viewModelScope.launch {
             settingsRepository.setSharingConsent(consented)
             message.value = if (consented) {
-                "Sharing is on. You upload only what you are watching, within the storage limit."
+                "Sharing is on. You upload what you are watching, within the storage limit."
             } else {
-                "Sharing is off. Torrent playback is disabled; the server still works."
+                "Sharing is off. Playback is unavailable until you turn it back on."
             }
         }
     }
@@ -119,52 +105,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setServerUrl(url: String) {
-        viewModelScope.launch {
-            val normalized = ServerUrlNormalizer.normalize(url)
-            if (normalized == null && url.isNotBlank()) {
-                message.value = "That doesn't look like a valid address."
-                return@launch
-            }
-            settingsRepository.setServerUrl(normalized ?: "")
-            connectionTest.value = null
-            message.value = null
-        }
-    }
-
-    fun setApiToken(token: String) {
-        settingsRepository.setApiToken(token.takeIf { it.isNotBlank() })
-        tokenSet.value = settingsRepository.apiToken() != null
-        connectionTest.value = null
-    }
-
-    /**
-     * "Test connection" reports what the server actually said, so a wrong port or a rejected token
-     * is distinguishable from a sleeping PC (plan.md §6.7).
-     */
-    fun testConnection() {
-        if (testing.value) return
-        viewModelScope.launch {
-            testing.value = true
-            connectionTest.value = try {
-                ConnectionTestResult.Success(mediaRepository.serverInfo())
-            } catch (error: DataError) {
-                TorfilxLog.w(TAG, "Connection test failed", error)
-                ConnectionTestResult.Failure(
-                    when (error) {
-                        is DataError.NotConfigured -> "No server address set."
-                        is DataError.Unauthorized -> "The server rejected the API token."
-                        is DataError.Timeout -> "The server did not answer in time."
-                        is DataError.Malformed -> "That address answered, but not with a Torfilx API."
-                        else -> "Could not reach the server."
-                    },
-                )
-            } finally {
-                testing.value = false
-            }
-        }
-    }
-
     fun setAudioLanguage(language: String?) = launchSetting { settingsRepository.setAudioLanguage(language) }
     fun setSubtitleLanguage(language: String?) = launchSetting { settingsRepository.setSubtitleLanguage(language) }
     fun setSubtitlesEnabled(enabled: Boolean) = launchSetting { settingsRepository.setSubtitlesEnabled(enabled) }
@@ -175,22 +115,19 @@ class SettingsViewModel @Inject constructor(
     fun setSkipIntroAutomatically(enabled: Boolean) =
         launchSetting { settingsRepository.setSkipIntroAutomatically(enabled) }
 
-    fun setDemoMode(enabled: Boolean) {
+    /** Clears downloaded torrent data; watch progress and My List are kept. */
+    fun clearDownloadedData() {
         viewModelScope.launch {
-            settingsRepository.setDemoMode(enabled)
-            mediaRepository.clearCache()
-            message.value = if (enabled) {
-                "Demo library enabled — the server is not being used."
-            } else {
-                "Demo library disabled."
-            }
+            runCatching { torrentCoordinator.clearAllData() }
+                .onSuccess { message.value = "Downloaded data cleared. Watch progress was kept." }
+                .onFailure { message.value = "Could not clear downloaded data: ${it.message}" }
         }
     }
 
-    fun clearCache() {
+    fun clearSearchHistory() {
         viewModelScope.launch {
-            mediaRepository.clearCache()
-            message.value = "Cached library cleared. Watch progress was kept."
+            mediaRepository.clearSearchHistory()
+            message.value = "Search history cleared."
         }
     }
 
@@ -201,7 +138,10 @@ class SettingsViewModel @Inject constructor(
                 val file = File(context.getExternalFilesDir(null) ?: context.filesDir, "torfilx-log.txt")
                 file.writeText(TorfilxLog.dump())
                 "Logs written to ${file.absolutePath}"
-            }.getOrElse { "Could not write logs: ${it.message}" }
+            }.getOrElse {
+                TorfilxLog.w(TAG, "Log export failed", it)
+                "Could not write logs: ${it.message}"
+            }
         }
     }
 

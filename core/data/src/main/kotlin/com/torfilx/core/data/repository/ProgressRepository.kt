@@ -10,8 +10,6 @@ import com.torfilx.core.data.database.ProgressEntity
 import com.torfilx.core.data.database.SyncState
 import com.torfilx.core.data.database.toDomain
 import com.torfilx.core.data.database.toEntity
-import com.torfilx.core.data.remote.MediaRemoteSource
-import com.torfilx.core.data.sync.SyncScheduler
 import com.torfilx.core.model.MediaCard
 import com.torfilx.core.model.PlaybackProgress
 import com.torfilx.core.model.ResumeRules
@@ -35,9 +33,7 @@ class ProgressRepository @Inject constructor(
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
     private val episodeDao: EpisodeDao,
-    private val remote: MediaRemoteSource,
     private val timeProvider: TimeProvider,
-    private val syncScheduler: SyncScheduler,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -81,12 +77,11 @@ class ProgressRepository @Inject constructor(
             durationMs = safeDuration,
             watched = watched,
             updatedAtMs = timeProvider.serverAdjustedNowMs(),
-            syncState = SyncState.PENDING.name,
+            syncState = SyncState.SYNCED.name,
             showId = showId ?: episodeDao.getEpisode(itemId)?.showId,
         )
         runCatching { progressDao.upsert(entity) }
             .onFailure { TorfilxLog.e(TAG, "Failed to persist progress for $itemId", it) }
-        syncScheduler.enqueueProgressSync()
     }
 
     /** Marks an item watched (Menu → Mark watched) without playing it. */
@@ -105,7 +100,6 @@ class ProgressRepository @Inject constructor(
     /** Removes an item from Continue Watching (Menu → Remove). */
     suspend fun remove(itemId: String) {
         progressDao.delete(itemId)
-        scope.runCatchingRemote(TAG, "delete progress $itemId") { remote.deleteProgress(itemId) }
     }
 
     /**
@@ -137,49 +131,6 @@ class ProgressRepository @Inject constructor(
             }
             cards
         }
-
-    /**
-     * Merges server progress into the local database.
-     *
-     * Conflict rule: the newest `updatedAt` wins. A local row that is still pending upload is never
-     * overwritten by an older server value (plan.md §7.5).
-     */
-    suspend fun reconcileFromServer() {
-        val since = progressDao.lastSyncedUpdatedAt()
-        val serverProgress = remote.progressSince(since)
-        if (serverProgress.isEmpty()) return
-
-        val merged = serverProgress.mapNotNull { server ->
-            val local = progressDao.get(server.itemId)
-            when {
-                local == null -> server.toEntity(
-                    syncState = SyncState.SYNCED,
-                    showId = episodeDao.getEpisode(server.itemId)?.showId,
-                )
-
-                local.updatedAtMs >= server.updatedAtMs -> null // local is newer or identical
-                else -> server.toEntity(syncState = SyncState.SYNCED, showId = local.showId)
-            }
-        }
-        if (merged.isNotEmpty()) progressDao.upsertAll(merged)
-    }
-
-    /** Pushes every pending local write. Returns false if anything failed and should be retried. */
-    suspend fun pushPending(): Boolean {
-        val pending = progressDao.pending()
-        var allOk = true
-        for (entity in pending) {
-            val result = runCatching { remote.putProgress(entity.toDomain()) }
-            if (result.isSuccess) {
-                progressDao.markSyncState(entity.itemId, entity.updatedAtMs, SyncState.SYNCED.name)
-            } else {
-                allOk = false
-                TorfilxLog.w(TAG, "Progress sync failed for ${entity.itemId}", result.exceptionOrNull())
-                progressDao.markSyncState(entity.itemId, entity.updatedAtMs, SyncState.FAILED.name)
-            }
-        }
-        return allOk
-    }
 
     companion object {
         const val CONTINUE_WATCHING_LIMIT = 20

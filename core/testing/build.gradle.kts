@@ -12,7 +12,6 @@ dependencies {
     api(projects.core.model)
     api(projects.core.common)
     api(projects.core.data)
-    api(projects.core.network)
     api(platform(libs.androidx.compose.bom))
     api(libs.junit4)
     api(libs.truth)

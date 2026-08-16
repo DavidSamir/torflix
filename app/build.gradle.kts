@@ -64,7 +64,6 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.ui)
     implementation(projects.core.data)
-    implementation(projects.core.network)
     implementation(projects.core.player)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.common)

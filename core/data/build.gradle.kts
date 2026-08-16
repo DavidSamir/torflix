@@ -13,7 +13,6 @@ android {
 dependencies {
     api(projects.core.model)
     api(projects.core.common)
-    implementation(projects.core.network)
     api(projects.core.torrent)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)

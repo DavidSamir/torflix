@@ -10,9 +10,6 @@ import com.torfilx.core.data.database.ProgressDao
 import com.torfilx.core.data.database.SearchHistoryDao
 import com.torfilx.core.data.database.SeasonDao
 import com.torfilx.core.data.database.SyncMarkerDao
-import com.torfilx.core.data.remote.MediaRemoteSource
-import com.torfilx.core.data.remote.RoutingMediaRemoteSource
-import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -53,12 +50,4 @@ object DatabaseModule {
 
     @Provides
     fun providesSyncMarkerDao(database: TorfilxDatabase): SyncMarkerDao = database.syncMarkerDao()
-}
-
-@Module
-@InstallIn(SingletonComponent::class)
-abstract class RemoteSourceModule {
-    @Binds
-    @Singleton
-    abstract fun bindsMediaRemoteSource(impl: RoutingMediaRemoteSource): MediaRemoteSource
 }

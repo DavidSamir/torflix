@@ -1,6 +1,6 @@
 package com.torfilx.core.player
 
-import com.torfilx.core.data.remote.MediaRemoteSource
+import com.torfilx.core.data.catalog.BundledCatalog
 import com.torfilx.core.model.PlaybackInfo
 import com.torfilx.core.player.capability.DeviceCapabilitiesProvider
 import java.util.concurrent.ConcurrentHashMap
@@ -8,21 +8,24 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Fetches playback information and remembers which sources have already failed for an item.
+ * Where the player gets its sources.
  *
- * The failure memory is what implements "direct play failed once → use the transcode for this item"
- * (plan.md §7.2) without re-attempting the broken source on every seek or replay in this session.
+ * With no media server, every source is a magnet from the bundled catalogue. Failed sources are
+ * remembered for the session so a quality that will not play is not retried on every attempt.
  */
 @Singleton
 class PlaybackInfoRepository @Inject constructor(
-    private val remote: MediaRemoteSource,
+    private val catalog: BundledCatalog,
     private val capabilitiesProvider: DeviceCapabilitiesProvider,
 ) {
 
     private val failedSources = ConcurrentHashMap<String, MutableSet<String>>()
 
-    suspend fun playbackInfo(itemId: String): PlaybackInfo =
-        remote.playbackInfo(itemId, capabilitiesProvider.capabilities())
+    suspend fun playbackInfo(itemId: String): PlaybackInfo = PlaybackInfo(
+        itemId = itemId,
+        sources = catalog.sourcesFor(itemId),
+        durationMs = catalog.item(itemId)?.item?.runtimeMs,
+    )
 
     fun failedSourceIds(itemId: String): Set<String> = failedSources[itemId]?.toSet() ?: emptySet()
 

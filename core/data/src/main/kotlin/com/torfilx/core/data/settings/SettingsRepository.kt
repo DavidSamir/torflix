@@ -31,11 +31,9 @@ internal val Context.settingsDataStore: DataStore<Preferences> by preferencesDat
 @Singleton
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val tokenStore: SecureTokenStore,
 ) {
 
     private object Keys {
-        val SERVER_URL = stringPreferencesKey("server_url")
         val AUDIO_LANGUAGE = stringPreferencesKey("audio_language")
         val SUBTITLE_LANGUAGE = stringPreferencesKey("subtitle_language")
         val SUBTITLES_ON = booleanPreferencesKey("subtitles_on")
@@ -44,7 +42,6 @@ class SettingsRepository @Inject constructor(
         val FRAME_RATE_MATCHING = booleanPreferencesKey("frame_rate_matching")
         val TUNNELED_PLAYBACK = booleanPreferencesKey("tunneled_playback")
         val SKIP_INTRO_AUTO = booleanPreferencesKey("skip_intro_auto")
-        val DEMO_MODE = booleanPreferencesKey("demo_mode")
         val SHARING_CONSENT = booleanPreferencesKey("sharing_consent")
         val SHARING_CONSENT_SEEN = booleanPreferencesKey("sharing_consent_seen")
         val SEEDING_ENABLED = booleanPreferencesKey("seeding_enabled")
@@ -63,7 +60,6 @@ class SettingsRepository @Inject constructor(
         }
         .map { prefs ->
             AppSettings(
-                serverUrl = prefs[Keys.SERVER_URL].orEmpty(),
                 preferredAudioLanguage = prefs[Keys.AUDIO_LANGUAGE],
                 preferredSubtitleLanguage = prefs[Keys.SUBTITLE_LANGUAGE],
                 subtitlesEnabledByDefault = prefs[Keys.SUBTITLES_ON] ?: false,
@@ -102,11 +98,6 @@ class SettingsRepository @Inject constructor(
         .catch { emit(emptyPreferences()) }
         .map { it[Keys.STORAGE_FRACTION]?.toFloatOrNull() ?: DEFAULT_STORAGE_FRACTION }
 
-    val demoMode: Flow<Boolean> = context.settingsDataStore.data
-        .catch { emit(emptyPreferences()) }
-        .map { it[Keys.DEMO_MODE] ?: false }
-
-    suspend fun setServerUrl(url: String) = edit { it[Keys.SERVER_URL] = url }
     suspend fun setAudioLanguage(language: String?) = editNullable(Keys.AUDIO_LANGUAGE, language)
     suspend fun setSubtitleLanguage(language: String?) = editNullable(Keys.SUBTITLE_LANGUAGE, language)
     suspend fun setSubtitlesEnabled(enabled: Boolean) = edit { it[Keys.SUBTITLES_ON] = enabled }
@@ -115,8 +106,6 @@ class SettingsRepository @Inject constructor(
     suspend fun setFrameRateMatching(enabled: Boolean) = edit { it[Keys.FRAME_RATE_MATCHING] = enabled }
     suspend fun setTunneledPlayback(enabled: Boolean) = edit { it[Keys.TUNNELED_PLAYBACK] = enabled }
     suspend fun setSkipIntroAutomatically(enabled: Boolean) = edit { it[Keys.SKIP_INTRO_AUTO] = enabled }
-    suspend fun setDemoMode(enabled: Boolean) = edit { it[Keys.DEMO_MODE] = enabled }
-
     suspend fun setSharingConsent(consented: Boolean) = edit {
         it[Keys.SHARING_CONSENT] = consented
         it[Keys.SHARING_CONSENT_SEEN] = true
@@ -132,12 +121,6 @@ class SettingsRepository @Inject constructor(
     
     var cachedSharingConsent: Boolean = false
         internal set
-
-    fun apiToken(): String? = tokenStore.token
-
-    fun setApiToken(token: String?) {
-        tokenStore.token = token
-    }
 
     companion object {
         const val DEFAULT_STORAGE_FRACTION = 0.5f

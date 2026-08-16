@@ -53,12 +53,3 @@ data class SearchResult(
     val matchedOn: String? = null,
 )
 
-/** `GET /server/info` — drives "Test connection" and feature gating (plan.md §11.1). */
-data class ServerInfo(
-    val name: String,
-    val version: String,
-    val apiVersion: Int,
-    val features: Set<ServerFeature> = emptySet(),
-)
-
-enum class ServerFeature { TRANSCODE, SPRITES, MARKERS, SEARCH_PEOPLE, UNKNOWN }

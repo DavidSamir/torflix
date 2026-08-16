@@ -7,7 +7,6 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -15,12 +14,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.model.AppSettings
-import com.torfilx.core.network.di.MediaHttpClient
 import com.torfilx.core.player.capability.DeviceCapabilitiesProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
-import okhttp3.OkHttpClient
 import javax.inject.Inject
-import javax.inject.Provider
 import javax.inject.Singleton
 
 private const val TAG = "PlayerFactory"
@@ -35,9 +31,6 @@ private const val TAG = "PlayerFactory"
 @Singleton
 class PlayerFactory @Inject constructor(
     @ApplicationContext private val context: Context,
-    // The media client, not the API one: the API client rewrites request URLs to the configured
-    // server (destroying absolute media URLs) and has a 15 s read timeout that would abort a stream.
-    @MediaHttpClient private val okHttpClient: Provider<OkHttpClient>,
     private val capabilitiesProvider: DeviceCapabilitiesProvider,
 ) {
 
@@ -95,14 +88,11 @@ class PlayerFactory @Inject constructor(
     }
 
     /**
-     * Shares the app's OkHttp client so media requests carry the same auth header and connection
-     * pool as the API — the media endpoints are on the same server.
+     * Media comes from the app.s own loopback torrent stream server, so the platform HTTP stack is
+     * all that is needed — there is no server auth or connection pool to share.
      */
     @OptIn(UnstableApi::class)
-    private fun dataSourceFactory(): DataSource.Factory {
-        val http = OkHttpDataSource.Factory { request -> okHttpClient.get().newCall(request) }
-        return DefaultDataSource.Factory(context, http)
-    }
+    private fun dataSourceFactory(): DataSource.Factory = DefaultDataSource.Factory(context)
 
     private companion object {
         const val MIN_BUFFER_MS = 15_000
