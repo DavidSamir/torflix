@@ -1,14 +1,12 @@
 package com.torfilx.core.model
 
-/** A card as displayed in a row or grid: the item plus whatever local state decorates it. */
+/** A card as displayed in a row or grid: the film plus whatever local state decorates it. */
 data class MediaCard(
     val item: MediaItem,
     val progress: PlaybackProgress? = null,
     val inMyList: Boolean = false,
-    /** Continue Watching entries for a show point at a specific episode. */
-    val episode: Episode? = null,
 ) {
-    val playableId: String get() = episode?.id ?: item.id
+    val playableId: String get() = item.id
 }
 
 /** Home rows are ordered by the server, except the two the app owns locally (plan.md §11.3). */
@@ -42,7 +40,6 @@ enum class LibrarySort {
 enum class WatchedFilter { ALL, WATCHED, UNWATCHED }
 
 data class LibraryQuery(
-    val type: MediaType? = null,
     val genre: String? = null,
     val sort: LibrarySort = LibrarySort.DEFAULT,
     val watched: WatchedFilter = WatchedFilter.ALL,

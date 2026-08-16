@@ -181,6 +181,7 @@ fun PlayerScreen(
             PlayerErrorOverlay(
                 error = error,
                 onRetry = viewModel::retry,
+                onEnableSharing = viewModel::enableSharingAndRetry,
                 onExit = {
                     viewModel.leavePlayer()
                     onExit()
@@ -294,8 +295,10 @@ private fun BufferingIndicator() {
 private fun PlayerErrorOverlay(
     error: PlaybackError,
     onRetry: () -> Unit,
+    onEnableSharing: () -> Unit,
     onExit: () -> Unit,
 ) {
+    val sharingOff = error is PlaybackError.SharingNotEnabled
     ErrorState(
         title = when (error) {
             is PlaybackError.Network -> "Lost the server"
@@ -309,8 +312,16 @@ private fun PlayerErrorOverlay(
         message = error.message,
         // Retrying is pointless for a format this device cannot decode, or for a consent decision
         // that has to be made in Settings.
-        primaryActionLabel = if (error.isRetryable()) "Retry" else null,
-        onPrimaryAction = if (error.isRetryable()) onRetry else null,
+        primaryActionLabel = when {
+            sharingOff -> "Enable sharing"
+            error.isRetryable() -> "Retry"
+            else -> null
+        },
+        onPrimaryAction = when {
+            sharingOff -> onEnableSharing
+            error.isRetryable() -> onRetry
+            else -> null
+        },
         secondaryActionLabel = "Back",
         onSecondaryAction = onExit,
     )

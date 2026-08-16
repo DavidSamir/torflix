@@ -47,11 +47,10 @@ object SourceSelector {
     ): Result {
         if (sources.isEmpty()) return Result(null, Reason.NO_SOURCES)
 
-        // Torrent sources are opt-in per playback: uploading to a swarm is a decision the user makes
-        // explicitly, so automatic selection only ever considers server-provided sources.
-        val remaining = sources
-            .filterNot { it.id in failedSourceIds }
-            .filterNot { it.kind == SourceKind.TORRENT }
+        // Torrent is the only delivery mechanism the app has, so it is selectable automatically.
+        // Consent is enforced one layer down, in the engine: selecting a source never starts an
+        // upload by itself.
+        val remaining = sources.filterNot { it.id in failedSourceIds }
         if (remaining.isEmpty()) return Result(null, Reason.ALL_SOURCES_FAILED)
 
         val playable = remaining.filter { canPlay(it, capabilities) }

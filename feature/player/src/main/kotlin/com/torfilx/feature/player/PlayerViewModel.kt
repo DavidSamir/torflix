@@ -137,6 +137,19 @@ class PlayerViewModel @Inject constructor(
     fun setSpeed(speed: Float) = controller.setSpeed(speed)
     fun setAspectMode(mode: AspectMode) = controller.setAspectMode(mode)
     fun retry() = controller.retry()
+
+    /**
+     * Enables sharing from the error overlay and retries.
+     *
+     * With BitTorrent as the only delivery path, "sharing is off" is a dead end unless the viewer can
+     * fix it where they hit it — so the consent decision is offered again right here.
+     */
+    fun enableSharingAndRetry() {
+        viewModelScope.launch {
+            settingsRepository.setSharingConsent(true)
+            controller.retry()
+        }
+    }
     fun noteUserInput() = controller.noteUserInput()
     fun dismissStillWatching(continueWatching: Boolean) = controller.dismissStillWatching(continueWatching)
 

@@ -15,8 +15,8 @@ class OutcomeTest {
 
     @Test
     fun `typed errors pass through unchanged`() {
-        val outcome = runCatchingData { throw DataError.Unauthorized("nope") }
-        assertThat(outcome.errorOrNull()).isInstanceOf(DataError.Unauthorized::class.java)
+        val outcome = runCatchingData { throw DataError.NotFound("m1", "nope") }
+        assertThat(outcome.errorOrNull()).isInstanceOf(DataError.NotFound::class.java)
     }
 
     @Test
@@ -52,13 +52,13 @@ class OutcomeTest {
     fun `flow failures arrive as values instead of crashing the collector`() = runTest {
         val values = flow {
             emit(1)
-            throw DataError.ServerUnreachable("down")
+            throw DataError.Unreachable("down")
         }.asOutcome().toList()
 
         assertThat(values).hasSize(2)
         assertThat(values[0]).isEqualTo(Outcome.Success(1))
         assertThat((values[1] as Outcome.Failure).error)
-            .isInstanceOf(DataError.ServerUnreachable::class.java)
+            .isInstanceOf(DataError.Unreachable::class.java)
     }
 
     @Test
@@ -68,13 +68,13 @@ class OutcomeTest {
 
     @Test
     fun `retryability distinguishes transient failures from permanent ones`() {
-        assertThat(DataError.ServerUnreachable().isRetryable).isTrue()
+        assertThat(DataError.Unreachable().isRetryable).isTrue()
         assertThat(DataError.Timeout().isRetryable).isTrue()
-        assertThat(DataError.ServerError(503).isRetryable).isTrue()
+        assertThat(DataError.Timeout().isRetryable).isTrue()
 
-        assertThat(DataError.Unauthorized().isRetryable).isFalse()
+        assertThat(DataError.Storage().isRetryable).isFalse()
         assertThat(DataError.NotFound("x").isRetryable).isFalse()
-        assertThat(DataError.NotConfigured().isRetryable).isFalse()
+        assertThat(DataError.Unknown().isRetryable).isFalse()
         assertThat(DataError.Malformed().isRetryable).isFalse()
     }
 }
