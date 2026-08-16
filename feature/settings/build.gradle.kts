@@ -5,3 +5,7 @@ plugins {
 android {
     namespace = "com.myflix.feature.settings"
 }
+
+dependencies {
+    implementation(projects.core.network)
+}

@@ -1,7 +1,84 @@
 package com.myflix.tv
 
 import android.app.Application
+import android.content.ComponentCallbacks2
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.request.crossfade
+import com.myflix.core.common.log.MyflixLog
+import com.myflix.core.network.di.MediaHttpClient
 import dagger.hilt.android.HiltAndroidApp
+import okhttp3.OkHttpClient
+import okio.Path.Companion.toOkioPath
+import javax.inject.Inject
+import javax.inject.Provider
 
+private const val TAG = "App"
+
+/**
+ * Application entry point.
+ *
+ * Image cache sizes are chosen for a 1.5 GB Fire Stick: 25% of the heap in memory and 256 MB on
+ * disk, with `RGB_565`-friendly inexact sizing done at the call sites (plan.md §4, §9).
+ */
 @HiltAndroidApp
-class MyflixApplication : Application()
+class MyflixApplication : Application(), Configuration.Provider, SingletonImageLoader.Factory {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    @MediaHttpClient
+    lateinit var mediaHttpClient: Provider<OkHttpClient>
+
+    override fun onCreate() {
+        super.onCreate()
+        MyflixLog.debugEnabled = BuildConfig.DEBUG
+        MyflixLog.i(TAG, "MYFLIX ${BuildConfig.VERSION_NAME} starting")
+    }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.DEBUG else android.util.Log.WARN)
+            .build()
+
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .components {
+                add(OkHttpNetworkFetcherFactory(callFactory = { mediaHttpClient.get() }))
+            }
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(context, MEMORY_CACHE_PERCENT)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache").toOkioPath())
+                    .maxSizeBytes(DISK_CACHE_BYTES)
+                    .build()
+            }
+            .crossfade(true)
+            .build()
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Under memory pressure the image cache goes first; the player is never touched here.
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            MyflixLog.i(TAG, "Trimming image memory cache (level=$level)")
+            SingletonImageLoader.get(this).memoryCache?.clear()
+        }
+    }
+
+    private companion object {
+        const val MEMORY_CACHE_PERCENT = 0.25
+        const val DISK_CACHE_BYTES = 256L * 1024 * 1024
+    }
+}
