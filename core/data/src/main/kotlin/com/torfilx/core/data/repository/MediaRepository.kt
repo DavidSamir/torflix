@@ -2,6 +2,7 @@ package com.torfilx.core.data.repository
 
 import com.torfilx.core.common.di.Dispatcher
 import com.torfilx.core.common.di.TorfilxDispatcher
+import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.common.time.TimeProvider
 import com.torfilx.core.data.catalog.BundledCatalog
 import com.torfilx.core.data.database.SearchHistoryDao
@@ -189,6 +190,7 @@ class MediaRepository @Inject constructor(
     // --- Search ----------------------------------------------------------------------------------
 
     suspend fun search(query: String): List<SearchResult> = withContext(ioDispatcher) {
+        val startedAt = System.nanoTime()
         val matches = catalog.search(query, SEARCH_LIMIT)
         if (matches.isEmpty()) return@withContext emptyList()
 
@@ -203,6 +205,15 @@ class MediaRepository @Inject constructor(
                 ),
                 matchedOn = "title",
             )
+        }.also {
+            // A slow search on a TV is felt immediately: the results grid lags behind the keyboard.
+            // Logged when it happens so it is visible on the device, not only in a benchmark.
+            val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+            if (elapsedMs >= SLOW_SEARCH_MS) {
+                TorfilxLog.w(TAG, "Search \"$query\" took ${elapsedMs}ms (${it.size} results)")
+            } else {
+                TorfilxLog.i(TAG, "Search \"$query\": ${it.size} results in ${elapsedMs}ms")
+            }
         }
     }
 
@@ -229,6 +240,8 @@ class MediaRepository @Inject constructor(
         const val ROW_CATALOG = "catalog"
         const val SEARCH_LIMIT = 60
         const val RECENT_SEARCH_LIMIT = 10
+        private const val SLOW_SEARCH_MS = 50L
+        private const val TAG = "MediaRepo"
 
         /** A TV row longer than this is unreachable by D-pad and only costs memory. */
         private const val MAX_ROW_ITEMS = 60
