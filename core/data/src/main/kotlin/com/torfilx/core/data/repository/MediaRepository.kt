@@ -133,12 +133,6 @@ class MediaRepository @Inject constructor(
 
     suspend fun item(id: String): MediaItem? = withContext(ioDispatcher) { catalog.item(id)?.item }
 
-    /** No shows in a torrent catalogue: every entry is a film. */
-    fun observeShowDetails(showId: String): Flow<com.torfilx.core.model.ShowDetails?> =
-        kotlinx.coroutines.flow.flowOf(null)
-
-    suspend fun episode(episodeId: String): com.torfilx.core.model.Episode? = null
-
     // --- Search ----------------------------------------------------------------------------------
 
     suspend fun search(query: String): List<SearchResult> = withContext(ioDispatcher) {
