@@ -7,13 +7,13 @@ detekt = "1.23.8"
 
 # --- SDK levels (Fire OS 6 = API 25 is the floor, see plan.md §1) ------------
 minSdk = "23"
-compileSdk = "37"
+compileSdk = "36"
 targetSdk = "34"
 
 # --- AndroidX / Compose ------------------------------------------------------
-androidxCore = "1.19.0"
+androidxCore = "1.17.0"
 androidxActivity = "1.13.0"
-androidxLifecycle = "2.11.0"
+androidxLifecycle = "2.9.4"
 androidxNavigation = "2.9.8"
 androidxSplashscreen = "1.2.0"
 androidxProfileinstaller = "1.4.1"
@@ -21,7 +21,7 @@ androidxDatastore = "1.2.1"
 androidxPaging = "3.5.1"
 androidxWork = "2.11.2"
 androidxSecurityCrypto = "1.1.0"
-composeBom = "2026.08.00"
+composeBom = "2026.06.01"
 tvMaterial = "1.1.0"
 
 # --- DI ----------------------------------------------------------------------
