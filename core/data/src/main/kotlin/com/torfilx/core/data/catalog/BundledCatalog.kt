@@ -127,6 +127,8 @@ class BundledCatalog @Inject constructor(
         val raw = context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
         val entries = json.decodeFromString<List<CatalogEntryDto>>(raw)
 
+        val usedIds = HashSet<String>(entries.size)
+
         entries.mapIndexedNotNull { index, entry ->
             val title = entry.title.trim()
             if (title.isEmpty()) {
@@ -153,7 +155,22 @@ class BundledCatalog @Inject constructor(
                 )
             }
 
-            val id = "catalog-${title.slug()}-${entry.year.orEmpty()}"
+            // Ids must be unique: they are Compose list keys, and a duplicate key crashes the row.
+            // Two entries can legitimately share a title and year (a re-release, a duplicate line in a
+            // hand-edited file), so collisions are disambiguated by info hash, then by position.
+            val baseId = "catalog-${title.slug()}-${entry.year.orEmpty()}"
+            val id = when {
+                usedIds.add(baseId) -> baseId
+                else -> {
+                    val hashSuffix = sources.firstOrNull()?.id?.removePrefix("torrent-")?.take(8)
+                    val candidate = if (hashSuffix != null) "$baseId-$hashSuffix" else "$baseId-$index"
+                    if (usedIds.add(candidate)) {
+                        candidate
+                    } else {
+                        "$baseId-$index".also { usedIds.add(it) }
+                    }
+                }
+            }
             CatalogItem(
                 item = MediaItem(
                     id = id,
@@ -162,7 +179,11 @@ class BundledCatalog @Inject constructor(
                     year = entry.year?.filter { it.isDigit() }?.toIntOrNull(),
                     runtimeMs = entry.runtimeMinutes?.let { it * 60_000L },
                     overview = entry.overview,
-                    genres = entry.genres,
+                    // A repeated genre would put the same film twice in one row, and a duplicate key
+                    // inside a lazy list is a hard crash — so genres are normalised here, once.
+                    genres = entry.genres
+                        .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+                        .distinctBy { it.lowercase() },
                     images = Images(poster = entry.imageUrl, backdrop = entry.imageUrl),
                     addedAtMs = null,
                     updatedAtMs = 0L,

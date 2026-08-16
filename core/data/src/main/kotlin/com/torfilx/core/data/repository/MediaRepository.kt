@@ -77,7 +77,8 @@ class MediaRepository @Inject constructor(
                 .filterValues { it.size >= MIN_GENRE_ROW_SIZE }
                 .toList()
                 .sortedBy { it.first }
-                .map { (genre, list) -> genre to list.take(MAX_ROW_ITEMS) },
+                // distinctBy is belt-and-braces: a row must never contain the same film twice.
+                .map { (genre, list) -> genre to list.distinctBy { item -> item.id }.take(MAX_ROW_ITEMS) },
         )
     }
 
