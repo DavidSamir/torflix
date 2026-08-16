@@ -82,3 +82,29 @@ player. Only content that may be freely redistributed belongs here — seeding *
 - Tunneled playback is enabled where the device reports support (Amazon's recommendation for 4K/HDR)
   and can be disabled in Settings if an AV receiver glitches.
 - Media keys and Alexa transport commands work through `MediaSession`.
+
+## Legal and content policy
+
+**This project is provided for personal and educational use.** It is a BitTorrent client with a TV
+interface: the application ships no media, hosts nothing, and operates no tracker or index service.
+Every title it shows comes from `core/data/src/main/assets/catalog.json`, which is supplied by
+whoever builds the app.
+
+The catalogue committed to this repository is intended to hold **public-domain films** — works whose
+copyright has expired and which may be freely copied and redistributed (for example Chaplin's *The
+Kid*, 1921, and *The Gold Rush*, 1925).
+
+Two things follow from how BitTorrent works, and they are worth stating plainly:
+
+- Streaming a title over BitTorrent **also uploads it** to everyone else in that swarm. Downloading
+  is receiving; seeding is *distributing*. Distributing a copyrighted film without permission is
+  unlawful in most jurisdictions, and an "educational purposes" notice in a README does not change
+  that.
+- Your home IP address is visible to every other peer sharing the same title.
+
+Because of this, sharing is **off by default** and cannot start until it has been explicitly enabled
+through the consent screen, and it can be turned off again at any time in Settings.
+
+Whoever populates `catalog.json` and builds or distributes the resulting APK is responsible for
+ensuring they have the right to copy and redistribute those files. The maintainers of this codebase
+are not responsible for catalogues assembled by third parties.
