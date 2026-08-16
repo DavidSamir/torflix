@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.myflix.core.model.MediaCard
+import com.myflix.core.ui.focus.onMenuKey
 import com.myflix.core.ui.image.Artwork
 import com.myflix.core.ui.theme.FOCUS_ANIMATION_MS
 import com.myflix.core.ui.theme.FOCUS_SCALE
@@ -136,6 +137,9 @@ private fun FocusableMediaCard(
                     indication = null,
                     onClick = onClick,
                 )
+                // The Fire TV remote's Menu key is the TV equivalent of a long press: it opens the
+                // contextual actions for the focused card (plan.md §5.1).
+                .onMenuKey { onLongClick?.invoke() }
                 .semantics { contentDescription = description },
         ) {
             Artwork(
