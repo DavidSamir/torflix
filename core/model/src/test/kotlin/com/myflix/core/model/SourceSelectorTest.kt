@@ -62,7 +62,10 @@ class SourceSelectorTest {
     @Test
     fun `undecodable 4K HEVC on a 1080p only device falls back to the transcode`() {
         val capped = fireStick4k.copy(
-            videoDecoders = listOf(VideoDecoderCapability("video/hevc", 1920, 1080, 60)),
+            videoDecoders = listOf(
+                VideoDecoderCapability("video/avc", 1920, 1080, 60),
+                VideoDecoderCapability("video/hevc", 1920, 1080, 60),
+            ),
         )
         val result = SourceSelector.select(listOf(direct("d"), hls("t")), capped)
         assertThat(result.source?.id).isEqualTo("t")
@@ -123,7 +126,10 @@ class SourceSelectorTest {
     @Test
     fun `direct only preference never returns a transcode`() {
         val capped = fireStick4k.copy(
-            videoDecoders = listOf(VideoDecoderCapability("video/hevc", 1920, 1080, 60)),
+            videoDecoders = listOf(
+                VideoDecoderCapability("video/avc", 1920, 1080, 60),
+                VideoDecoderCapability("video/hevc", 1920, 1080, 60),
+            ),
         )
         val result = SourceSelector.select(
             sources = listOf(direct("d"), hls("t")),
