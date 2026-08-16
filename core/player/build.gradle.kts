@@ -12,7 +12,6 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.data)
     implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.session)
     implementation(libs.media3.common)
     implementation(libs.okhttp.core)

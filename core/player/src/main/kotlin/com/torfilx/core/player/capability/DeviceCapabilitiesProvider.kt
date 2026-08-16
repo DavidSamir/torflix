@@ -131,6 +131,9 @@ class DeviceCapabilitiesProvider @Inject constructor(
      * instead of being transcoded by the server (plan.md §15 question 1).
      */
     private fun passthroughCodecs(): Set<String> {
+        // AudioDeviceInfo arrived in API 23; on Fire OS 5 there is no way to enumerate the HDMI
+        // sink.s encodings, so passthrough is simply reported as unavailable.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return emptySet()
         val audioManager = context.getSystemService<AudioManager>() ?: return emptySet()
         val result = mutableSetOf<String>()
         runCatching {
@@ -151,6 +154,7 @@ class DeviceCapabilitiesProvider @Inject constructor(
     }
 
     private fun maxChannels(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return 2
         val audioManager = context.getSystemService<AudioManager>() ?: return 2
         return runCatching {
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -172,7 +176,12 @@ class DeviceCapabilitiesProvider @Inject constructor(
         val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
             ?: return DisplayInfo(1920, 1080, emptySet(), emptyList())
 
-        val modes = runCatching { display.supportedModes.toList() }.getOrDefault(emptyList())
+        // Display.getSupportedModes is API 23; older devices report a single fixed mode.
+        val modes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            runCatching { display.supportedModes.toList() }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
         val maxWidth = modes.maxOfOrNull { it.physicalWidth } ?: 1920
         val maxHeight = modes.maxOfOrNull { it.physicalHeight } ?: 1080
         val refreshRates = modes.map { it.refreshRate }.distinct().sorted()

@@ -16,7 +16,6 @@ dependencies {
     api(projects.core.torrent)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.security.crypto)
-    implementation(libs.androidx.paging.runtime)
     implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
