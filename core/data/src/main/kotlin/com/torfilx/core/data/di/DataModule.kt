@@ -2,13 +2,10 @@ package com.torfilx.core.data.di
 
 import android.content.Context
 import androidx.room.Room
-import com.torfilx.core.data.database.EpisodeDao
-import com.torfilx.core.data.database.LibraryDao
 import com.torfilx.core.data.database.MyListDao
 import com.torfilx.core.data.database.TorfilxDatabase
 import com.torfilx.core.data.database.ProgressDao
 import com.torfilx.core.data.database.SearchHistoryDao
-import com.torfilx.core.data.database.SeasonDao
 import com.torfilx.core.data.database.SyncMarkerDao
 import dagger.Module
 import dagger.Provides
@@ -29,15 +26,6 @@ object DatabaseModule {
             // No destructive fallback: losing watch progress on an upgrade is not acceptable, so a
             // missing migration must fail loudly in development instead of silently wiping data.
             .build()
-
-    @Provides
-    fun providesLibraryDao(database: TorfilxDatabase): LibraryDao = database.libraryDao()
-
-    @Provides
-    fun providesSeasonDao(database: TorfilxDatabase): SeasonDao = database.seasonDao()
-
-    @Provides
-    fun providesEpisodeDao(database: TorfilxDatabase): EpisodeDao = database.episodeDao()
 
     @Provides
     fun providesProgressDao(database: TorfilxDatabase): ProgressDao = database.progressDao()

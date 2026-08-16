@@ -2,21 +2,15 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "29f635a083313d05d0118c9e3b6fc9d8",
+    "identityHash": "3539b23922c6f1ed3be70f056c31b61f",
     "entities": [
       {
         "tableName": "library_items",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `type` TEXT NOT NULL, `title` TEXT NOT NULL, `sortTitle` TEXT NOT NULL, `year` INTEGER, `runtimeMs` INTEGER, `communityRating` REAL, `ageRating` TEXT, `overview` TEXT, `genres` TEXT NOT NULL, `posterUrl` TEXT, `backdropUrl` TEXT, `logoUrl` TEXT, `thumbUrl` TEXT, `addedAtMs` INTEGER, `updatedAtMs` INTEGER NOT NULL, `seasonCount` INTEGER, `episodeCount` INTEGER, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `sortTitle` TEXT NOT NULL, `year` INTEGER, `runtimeMs` INTEGER, `communityRating` REAL, `ageRating` TEXT, `overview` TEXT, `genres` TEXT NOT NULL, `posterUrl` TEXT, `backdropUrl` TEXT, `logoUrl` TEXT, `thumbUrl` TEXT, `addedAtMs` INTEGER, `updatedAtMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
             "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "type",
-            "columnName": "type",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -93,16 +87,6 @@
             "columnName": "updatedAtMs",
             "affinity": "INTEGER",
             "notNull": true
-          },
-          {
-            "fieldPath": "seasonCount",
-            "columnName": "seasonCount",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "episodeCount",
-            "columnName": "episodeCount",
-            "affinity": "INTEGER"
           }
         ],
         "primaryKey": {
@@ -112,15 +96,6 @@
           ]
         },
         "indices": [
-          {
-            "name": "index_library_items_type",
-            "unique": false,
-            "columnNames": [
-              "type"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_library_items_type` ON `${TABLE_NAME}` (`type`)"
-          },
           {
             "name": "index_library_items_sortTitle",
             "unique": false,
@@ -151,168 +126,8 @@
         ]
       },
       {
-        "tableName": "seasons",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `showId` TEXT NOT NULL, `number` INTEGER NOT NULL, `name` TEXT, `posterUrl` TEXT, `episodeCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "showId",
-            "columnName": "showId",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "number",
-            "columnName": "number",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "name",
-            "columnName": "name",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "posterUrl",
-            "columnName": "posterUrl",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "episodeCount",
-            "columnName": "episodeCount",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_seasons_showId",
-            "unique": false,
-            "columnNames": [
-              "showId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_seasons_showId` ON `${TABLE_NAME}` (`showId`)"
-          }
-        ]
-      },
-      {
-        "tableName": "episodes",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `showId` TEXT NOT NULL, `seasonId` TEXT NOT NULL, `seasonNumber` INTEGER NOT NULL, `episodeNumber` INTEGER NOT NULL, `title` TEXT, `overview` TEXT, `runtimeMs` INTEGER, `thumbUrl` TEXT, `airedAtMs` INTEGER, `updatedAtMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "showId",
-            "columnName": "showId",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "seasonId",
-            "columnName": "seasonId",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "seasonNumber",
-            "columnName": "seasonNumber",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "episodeNumber",
-            "columnName": "episodeNumber",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "title",
-            "columnName": "title",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "overview",
-            "columnName": "overview",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "runtimeMs",
-            "columnName": "runtimeMs",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "thumbUrl",
-            "columnName": "thumbUrl",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "airedAtMs",
-            "columnName": "airedAtMs",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "updatedAtMs",
-            "columnName": "updatedAtMs",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_episodes_showId",
-            "unique": false,
-            "columnNames": [
-              "showId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_showId` ON `${TABLE_NAME}` (`showId`)"
-          },
-          {
-            "name": "index_episodes_seasonId",
-            "unique": false,
-            "columnNames": [
-              "seasonId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_seasonId` ON `${TABLE_NAME}` (`seasonId`)"
-          },
-          {
-            "name": "index_episodes_seasonNumber_episodeNumber",
-            "unique": false,
-            "columnNames": [
-              "seasonNumber",
-              "episodeNumber"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_episodes_seasonNumber_episodeNumber` ON `${TABLE_NAME}` (`seasonNumber`, `episodeNumber`)"
-          }
-        ]
-      },
-      {
         "tableName": "progress",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `watched` INTEGER NOT NULL, `updatedAtMs` INTEGER NOT NULL, `syncState` TEXT NOT NULL, `showId` TEXT, PRIMARY KEY(`itemId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`itemId` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `watched` INTEGER NOT NULL, `updatedAtMs` INTEGER NOT NULL, `syncState` TEXT NOT NULL, PRIMARY KEY(`itemId`))",
         "fields": [
           {
             "fieldPath": "itemId",
@@ -349,11 +164,6 @@
             "columnName": "syncState",
             "affinity": "TEXT",
             "notNull": true
-          },
-          {
-            "fieldPath": "showId",
-            "columnName": "showId",
-            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -495,7 +305,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '29f635a083313d05d0118c9e3b6fc9d8')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '3539b23922c6f1ed3be70f056c31b61f')"
     ]
   }
 }

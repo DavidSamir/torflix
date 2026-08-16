@@ -10,9 +10,6 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [
-        LibraryItemEntity::class,
-        SeasonEntity::class,
-        EpisodeEntity::class,
         ProgressEntity::class,
         MyListEntity::class,
         SearchHistoryEntity::class,
@@ -22,9 +19,6 @@ import androidx.room.RoomDatabase
     exportSchema = true,
 )
 abstract class TorfilxDatabase : RoomDatabase() {
-    abstract fun libraryDao(): LibraryDao
-    abstract fun seasonDao(): SeasonDao
-    abstract fun episodeDao(): EpisodeDao
     abstract fun progressDao(): ProgressDao
     abstract fun myListDao(): MyListDao
     abstract fun searchHistoryDao(): SearchHistoryDao
