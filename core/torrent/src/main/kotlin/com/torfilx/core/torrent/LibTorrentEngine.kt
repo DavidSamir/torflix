@@ -53,7 +53,8 @@ class LibTorrentEngine @Inject constructor(
     private val session = SessionManager()
     private val sessionMutex = Mutex()
     private val streamServer = TorrentStreamServer()
-    private val activeStreams = mutableMapOf<String, StreamedTorrent>()
+    /** Streaming *and* seeding torrents; a torrent leaves this map only when it is removed. */
+    private val managedTorrents = java.util.concurrent.ConcurrentHashMap<String, StreamedTorrent>()
 
     private val _torrents = MutableStateFlow<List<TorrentStatus>>(emptyList())
     override val torrents: Flow<List<TorrentStatus>> = _torrents.asStateFlow()
@@ -127,7 +128,7 @@ class LibTorrentEngine @Inject constructor(
         sessionMutex.withLock {
             if (!started) return@withLock
             streamServer.stop()
-            activeStreams.clear()
+            managedTorrents.clear()
             runCatching { session.stop() }
             started = false
             TorfilxLog.i(TAG, "Torrent session stopped")
@@ -141,7 +142,11 @@ class LibTorrentEngine @Inject constructor(
         start()
         enforceStorageBudget()
 
-        activeStreams[infoHash]?.let { existing ->
+        managedTorrents[infoHash]?.let { existing ->
+            // Already in the session (possibly seeding): resume streaming from it rather than
+            // re-adding the torrent and re-checking every piece on disk.
+            existing.isStreaming = true
+            streamServer.register(existing)
             return@withContext existing.toStream(streamServer.port)
         }
 
@@ -197,7 +202,7 @@ class LibTorrentEngine @Inject constructor(
             numPieces = info.numPieces(),
             lastTouchedMs = System.currentTimeMillis(),
         )
-        activeStreams[infoHash] = streamed
+        managedTorrents[infoHash] = streamed
         streamServer.register(streamed)
 
         // Prime the beginning of the file so playback can start without waiting for the whole thing.
@@ -207,19 +212,23 @@ class LibTorrentEngine @Inject constructor(
     }
 
     override suspend fun stopStreaming(infoHash: String) = withContext(ioDispatcher) {
-        val streamed = activeStreams[infoHash] ?: return@withContext
+        val streamed = managedTorrents[infoHash] ?: return@withContext
         streamServer.unregister(infoHash)
-        // Keep the torrent in the session: with consent it now seeds what was downloaded.
-        if (!consentProvider.hasConsented()) {
+        streamed.isStreaming = false
+        // The torrent stays in the session so it keeps seeding what was downloaded; without consent
+        // it is paused instead, which stops all upload immediately.
+        if (consentProvider.hasConsented()) {
+            runCatching { streamed.handle.resume() }
+            TorfilxLog.i(TAG, "Now seeding ${streamed.fileName}")
+        } else {
             runCatching { streamed.handle.pause() }
         }
-        activeStreams.remove(infoHash)
         enforceStorageBudget()
     }
 
     override suspend fun remove(infoHash: String, deleteData: Boolean) = withContext(ioDispatcher) {
         streamServer.unregister(infoHash)
-        activeStreams.remove(infoHash)
+        managedTorrents.remove(infoHash)
         val handle = runCatching { session.find(infoHash.toSha1Hash()) }.getOrNull()
         if (handle != null && handle.isValid) {
             runCatching {
@@ -247,7 +256,7 @@ class LibTorrentEngine @Inject constructor(
         TorfilxLog.i(TAG, "Torrent data ${used / 1_000_000} MB over cap ${cap / 1_000_000} MB; evicting")
 
         val candidates = _torrents.value
-            .filterNot { it.infoHash in activeStreams.keys }
+            .filterNot { managedTorrents[it.infoHash]?.isStreaming == true }
             .sortedBy { lastTouched[it.infoHash] ?: 0L }
 
         for (candidate in candidates) {
@@ -295,13 +304,14 @@ class LibTorrentEngine @Inject constructor(
                 val snapshot = runCatching { collectStatuses() }.getOrDefault(emptyList())
                 _torrents.value = snapshot
                 snapshot.forEach { lastTouched.putIfAbsent(it.infoHash, System.currentTimeMillis()) }
-                activeStreams.keys.forEach { lastTouched[it] = System.currentTimeMillis() }
+                managedTorrents.values.filter { it.isStreaming }
+                    .forEach { lastTouched[it.infoHash] = System.currentTimeMillis() }
                 delay(STATUS_POLL_MS)
             }
         }
     }
 
-    private fun collectStatuses(): List<TorrentStatus> = activeStreams.values.mapNotNull { streamed ->
+    private fun collectStatuses(): List<TorrentStatus> = managedTorrents.values.mapNotNull { streamed ->
         val handle = streamed.handle
         if (!handle.isValid) return@mapNotNull null
         val status = handle.status()

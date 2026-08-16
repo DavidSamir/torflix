@@ -32,6 +32,16 @@ internal class StreamedTorrent(
     var lastTouchedMs: Long,
 ) {
 
+    /**
+     * False once playback has stopped but the torrent is still in the session, seeding.
+     *
+     * Kept in the same map as streaming torrents so seeding shows up in the sharing stats and is
+     * still governed by the storage budget — a torrent that seeds invisibly is one nobody can
+     * manage.
+     */
+    @Volatile
+    var isStreaming: Boolean = true
+
     fun toStream(port: Int) = TorrentStream(
         infoHash = infoHash,
         url = "http://127.0.0.1:$port/$infoHash",
