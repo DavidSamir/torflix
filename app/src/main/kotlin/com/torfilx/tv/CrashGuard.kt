@@ -28,7 +28,10 @@ internal fun Application.installCrashGuard() {
 
         runCatching {
             TorfilxLog.e(TAG, "Uncaught exception on ${thread.name} (repeat=$isRepeatCrash)", error)
-            crashPrefs().edit().putLong(KEY_LAST_CRASH_AT, now).apply()
+            // commit(), not apply(): the process is killed a few lines below, and an asynchronous
+            // write never lands — which makes every crash look like the first one and turns the
+            // restart into an endless loop (the app flickering once a second on the TV).
+            crashPrefs().edit().putLong(KEY_LAST_CRASH_AT, now).commit()
         }
 
         if (isRepeatCrash) {
