@@ -24,7 +24,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ## Tier 2 — Medium
 
-- [ ] **15. R8 fully off** — bloat, no obfuscation, dead proguard rules, false comment.
+- [x] **15. R8 fully off** — bloat, no obfuscation, dead proguard rules, false comment.
 - [ ] **16. DataStore corruption handler** — a corrupt settings file breaks all writes permanently.
 - [ ] **17. Catalog parse resilience** — one bad byte empties the whole catalog; non-streaming decode on a low-RAM stick.
 - [ ] **18. Accessibility** — chips/toggles/scrubber/search unlabeled for VoiceView.
@@ -42,6 +42,15 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#15 R8 off + bloat + false comment** — R8 stays disabled (ART on Fire OS 5 miscompiles its dex
+  into a launch SIGSEGV; correctness over size), but corrected the proguard-rules.pro header that
+  falsely claimed "R8 full mode is on" to state it is disabled and why. Cut real bloat instead:
+  every Fire TV is 32-bit ARM, so the x86/x86_64 libtorrent binaries were ~13 MB of emulator-only
+  dead weight in the shipped APK. Release now ships armeabi-v7a + arm64-v8a only, dropping the
+  release APK from 29 MB to 17 MB (-41%). Debug keeps all ABIs so it still runs on the x86 test
+  emulators. Trade-off: the release APK installs only on ARM (all production devices); emulator
+  smoke-testing uses the debug build, whose code is identical since minification is off in both.
 
 - **#14 Tests on riskiest code** — extracted the catalogue parser to a pure `parseCatalog(raw, json)`
   and added a 6-case test that exercises the *real* parser (magnet validation, id de-duplication,

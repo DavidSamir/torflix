@@ -1,7 +1,10 @@
 # TORFILX release rules.
 #
-# R8 full mode is on. Everything below is a rule R8 cannot infer on its own: native bindings,
-# reflective serialization, and Room/Hilt generated code.
+# NOTE: R8/minification is currently DISABLED for release (isMinifyEnabled = false in
+# app/build.gradle.kts), because ART on Fire OS 5 miscompiles R8's optimised dex and crashes with a
+# native SIGSEGV at launch. These rules therefore DO NOT run today. They are kept, validated and
+# ready so that minification can be turned back on — e.g. for a build whose minSdk is raised above
+# Fire OS 5 — without having to rediscover the native/reflection keeps below.
 
 # --- libtorrent4j -------------------------------------------------------------------------------
 # The native library calls back into these classes by name through SWIG/JNI; renaming or removing

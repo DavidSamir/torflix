@@ -48,9 +48,21 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            // R8/minification is deliberately OFF. ART on Fire OS 5 (Android 5.1) miscompiles R8's
+            // optimised dex and the process dies with a native SIGSEGV on a coroutine thread at
+            // launch; the same build with minification off runs clean. Since the whole point is to
+            // support the Fire OS 5 sticks, correctness wins over the smaller/obfuscated APK. The
+            // proguard-rules.pro keep-rules are retained but inactive — see the note in that file.
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+            // Every Fire TV is 32-bit ARM (armeabi-v7a); arm64 is cheap forward-insurance for a
+            // 64-bit Android TV box. The x86/x86_64 libtorrent binaries exist only for the emulator
+            // and are ~13 MB of dead weight in a shipped APK, so keep them out of release. The debug
+            // variant keeps all ABIs so it still runs on the x86 emulators used for testing.
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+
             signingConfig = if (providers.environmentVariable("TORFILX_KEYSTORE").isPresent) {
                 signingConfigs.getByName("release")
             } else {
