@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
@@ -51,6 +52,11 @@ class SettingsRepository @Inject constructor(
     private val dataStore: DataStore<Preferences> by lazy {
         PreferenceDataStoreFactory.create(
             scope = CoroutineScope(ioDispatcher + SupervisorJob()),
+            // Without this a corrupt preferences file throws on every read AND write — the reads are
+            // caught below and fall back to defaults, but the writes were not, so the user could
+            // never change a setting again. Replacing the corrupt file with empty preferences turns
+            // a permanent lockout into a one-time reset to defaults.
+            corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
             produceFile = { context.preferencesDataStoreFile("torfilx_settings") },
         )
     }

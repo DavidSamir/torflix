@@ -25,7 +25,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 ## Tier 2 — Medium
 
 - [x] **15. R8 fully off** — bloat, no obfuscation, dead proguard rules, false comment.
-- [ ] **16. DataStore corruption handler** — a corrupt settings file breaks all writes permanently.
+- [x] **16. DataStore corruption handler** — a corrupt settings file breaks all writes permanently.
 - [ ] **17. Catalog parse resilience** — one bad byte empties the whole catalog; non-streaming decode on a low-RAM stick.
 - [ ] **18. Accessibility** — chips/toggles/scrubber/search unlabeled for VoiceView.
 - [ ] **19. Wire `NetworkMonitor`** — no offline affordance, no mid-stream recovery; remove dead banners.
@@ -42,6 +42,11 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#16 DataStore corruption handler** — a corrupt settings file threw on every read (caught, falls
+  back to defaults) but also on every write (not caught), so a one-time corruption locked the user
+  out of changing any setting forever. Added a ReplaceFileCorruptionHandler that swaps a corrupt
+  file for empty preferences, turning the permanent lockout into a one-time reset to defaults.
 
 - **#15 R8 off + bloat + false comment** — R8 stays disabled (ART on Fire OS 5 miscompiles its dex
   into a launch SIGSEGV; correctness over size), but corrected the proguard-rules.pro header that
