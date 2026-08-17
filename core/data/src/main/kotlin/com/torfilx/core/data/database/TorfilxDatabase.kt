@@ -5,8 +5,16 @@ import androidx.room.RoomDatabase
 
 /**
  * Schemas are exported to `core/data/schemas` and committed, so every future migration is
- * reviewable and testable (plan.md §8.1). `fallbackToDestructiveMigration` is never enabled in
- * release builds — losing playback progress on upgrade is not acceptable.
+ * reviewable and testable (plan.md §8.1). `fallbackToDestructiveMigration` is never enabled —
+ * losing playback progress on upgrade is not acceptable.
+ *
+ * Because destructive fallback is off, **bumping [version] without a migration is a hard startup
+ * crash on every already-installed device.** To change the schema safely:
+ *  1. bump [version];
+ *  2. write a `Migration(N, N+1)` and add it to the Room builder in `DataModule`;
+ *  3. extend `TorfilxDatabaseMigrationTest` with a `runMigrationsAndValidate(...)` for the new step.
+ * The exported JSON under `core/data/schemas` is generated automatically by the Room compiler and
+ * must be committed alongside the change — it is the fixture the migration test replays.
  */
 @Database(
     entities = [

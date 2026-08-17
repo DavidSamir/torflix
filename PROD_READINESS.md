@@ -17,7 +17,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **8. Foreground service** — started with `startService`; no notification channel; `POST_NOTIFICATIONS` never requested → FGS crash risk on Android 12/13. _(Mostly already correct: Media3 self-promotes and creates the channel; added the API-33+ runtime permission request. No current Fire TV is API 33.)_
 - [x] **9. Data loss on reinstall** — progress / My List / settings are local-only with `allowBackup=false` and no export. _(Added file-based backup/restore of watch data; Google Auto Backup doesn't exist on Fire OS.)_
 - [x] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
-- [ ] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
+- [x] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
 - [ ] **12. CI quality gate dead** — lint never runs in CI; baseline hides a fatal `Instantiatable`.
 - [ ] **13. Player focus loss** — focus can be stranded after controls auto-hide.
 - [ ] **14. No tests on riskiest code** — torrent engine, stream server, playback controller, real catalog parser.
@@ -42,6 +42,13 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#11 Room migration trap** — added an instrumented MigrationTestHelper test that replays the
+  exported schemas (verified: ran on the API 22 emulator, 1 test, 0 failures) and is the template
+  for validating every future migration; wired the schema dir as androidTest assets. Expanded the
+  TorfilxDatabase KDoc with the exact, ordered procedure for a safe schema change, so a version bump
+  without a migration + test is caught rather than shipped as a startup crash-loop. (CI wiring of
+  instrumented tests is item #14.)
 
 - **#10 lastTouched data race** — the eviction bookkeeping map was a plain HashMap written from the
   status poller (Default dispatcher) and read from enforceStorageBudget (IO); made it a
