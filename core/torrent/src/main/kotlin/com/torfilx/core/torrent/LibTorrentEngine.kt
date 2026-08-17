@@ -161,7 +161,10 @@ class LibTorrentEngine @Inject constructor(
             }.onFailure { TorfilxLog.w(TAG, "Could not toggle the DHT (continuing on trackers)", it) }
 
             started = true
-            streamServer.start()
+            // Binding the loopback socket can fail on a locked-down device; surface it as a typed
+            // error the player screen can show, not a raw IOException that crashes the play coroutine.
+            runCatching { streamServer.start() }
+                .onFailure { throw TorrentError.EngineUnavailable(it) }
             startStatusPolling()
             TorfilxLog.i(
                 TAG,

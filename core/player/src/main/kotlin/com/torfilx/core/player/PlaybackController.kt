@@ -149,7 +149,34 @@ class PlaybackController @Inject constructor(
      * [PlaybackError] in the state rather than an exception, because a failure here must leave the
      * user on the player screen with a retry, not bounce them to Home (plan.md §7.4).
      */
+    /**
+     * Loads and starts an item, guaranteeing no exception escapes to crash the app.
+     *
+     * The inner logic maps the failures it expects ([DataError], [TorrentError]) to on-screen
+     * errors, but the play path also touches the network, the disk and a loopback socket, any of
+     * which can throw something unforeseen (e.g. a port-bind `IOException`). Left uncaught in the
+     * `viewModelScope.launch` that calls this, that would take down the whole app; here it becomes a
+     * retryable error on the player screen instead. Cancellation is re-thrown so coroutine teardown
+     * still works.
+     */
     suspend fun open(request: PlaybackRequest) {
+        try {
+            openInternal(request)
+        } catch (cancel: kotlinx.coroutines.CancellationException) {
+            throw cancel
+        } catch (error: Throwable) {
+            TorfilxLog.e(TAG, "Unexpected failure starting ${request.playableId}", error)
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = PlaybackError.Unknown(
+                    "Something went wrong starting this title. Try again." +
+                        (error.message?.let { "\n\n$it" } ?: ""),
+                ),
+            )
+        }
+    }
+
+    private suspend fun openInternal(request: PlaybackRequest) {
         settings = settingsRepository.settings.first()
         _state.value = PlayerUiState(isLoading = true)
 
