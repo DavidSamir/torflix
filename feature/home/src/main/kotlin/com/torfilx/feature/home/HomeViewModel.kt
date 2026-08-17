@@ -42,7 +42,13 @@ class HomeViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val progressRepository: ProgressRepository,
     private val myListRepository: MyListRepository,
+    networkMonitor: com.torfilx.core.common.network.NetworkMonitor,
 ) : ViewModel() {
+
+    /** True when there is no usable network, so Home can warn that playback will not work. */
+    val isOffline: StateFlow<Boolean> = networkMonitor.isOnline
+        .map { online -> !online }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
 
     val uiState: StateFlow<HomeUiState> = mediaRepository.observeHome()
         .map { rows ->

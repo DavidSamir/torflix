@@ -28,7 +28,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **16. DataStore corruption handler** — a corrupt settings file breaks all writes permanently.
 - [x] **17. Catalog parse resilience** — one bad byte empties the whole catalog; non-streaming decode on a low-RAM stick.
 - [x] **18. Accessibility** — chips/toggles/scrubber/search unlabeled for VoiceView.
-- [ ] **19. Wire `NetworkMonitor`** — no offline affordance, no mid-stream recovery; remove dead banners.
+- [x] **19. Wire `NetworkMonitor`** — no offline affordance, no mid-stream recovery; remove dead banners.
 - [ ] **20. Engine efficiency** — uncapped upload, RAF-per-chunk, metadata busy-poll.
 - [ ] **21. "Media server" copy remnants** — wrong wording for a torrent-only app.
 - [ ] **22. Update hygiene** — no in-app update check; versionCode decoupled from tag.
@@ -42,6 +42,12 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#19 Wire NetworkMonitor** — the fully-built NetworkMonitor was connected to nothing. Home now
+  observes it and shows an offline banner ("You are offline. You can browse, but playing a title
+  needs a connection.") using the previously-dead StaleBanner, without blocking the local catalogue.
+  Mid-stream auto-recovery was left out — the player already surfaces a network error with a Retry —
+  and the library errorMessage hook is a benign always-null field left in place.
 
 - **#18 Accessibility (VoiceView)** — TvChip now exposes a `selected` state + `Role.Tab`, so the
   Fire TV screen reader announces "selected"/on/off for filter chips and every settings toggle,

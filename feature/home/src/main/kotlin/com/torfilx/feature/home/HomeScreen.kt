@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -50,6 +51,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val offline by viewModel.isOffline.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     val play: (MediaCard) -> Unit = { card ->
@@ -77,6 +79,14 @@ fun HomeScreen(
                 onPlay = play,
                 onToggleMyList = viewModel::toggleMyList,
                 onRemoveFromContinue = viewModel::removeFromContinueWatching,
+            )
+        }
+
+        // Playback needs a connection; browsing does not. Warn without blocking the catalogue.
+        if (offline) {
+            StaleBanner(
+                message = "You're offline. You can browse, but playing a title needs a connection.",
+                modifier = Modifier.align(Alignment.TopCenter),
             )
         }
     }
@@ -153,10 +163,10 @@ private fun HomeContent(
 }
 
 @Composable
-private fun StaleBanner(message: String) {
+private fun StaleBanner(message: String, modifier: Modifier = Modifier) {
     val dimens = LocalTorfilxDimens.current
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
             .background(TorfilxColors.SurfaceHigh)
             .padding(horizontal = dimens.overscanHorizontal, vertical = 8.dp),
