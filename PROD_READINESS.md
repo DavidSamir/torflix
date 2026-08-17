@@ -5,7 +5,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 ## Tier 0 — Blockers
 
 - [x] **1. Release signing stability** — a missing CI keystore silently falls back to a fresh debug key, breaking in-place upgrades. Guard tagged releases; document the keystore.
-- [ ] **2. Stream-server correctness** — 64 KB reads cross piece boundaries into not-yet-downloaded data (zero-fill corruption); a stalled swarm truncates the HTTP body under a declared Content-Length.
+- [x] **2. Stream-server correctness** — 64 KB reads cross piece boundaries into not-yet-downloaded data (zero-fill corruption); a stalled swarm truncates the HTTP body under a declared Content-Length.
 - [ ] **3. Uncaught exceptions on the play path** — `open()`/`retry()` only catch `TorrentError`/`DataError`; anything else crashes the app.
 - [ ] **4. Storage safety** — active download never capped (disk fills), orphaned data can't be evicted after restart, "Clear data" doesn't delete files. `NoSpace` never thrown.
 - [ ] **5. Field failure visibility** — no remote crash/error capture, and the in-memory crash log is destroyed when CrashGuard restarts the process.
@@ -42,6 +42,13 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#2 Stream-server correctness** — reads are now capped to the end of the piece confirmed present,
+  so a read can never pull zero-filled holes from the sparse file (the corruption source); one
+  `RandomAccessFile` is reused per connection instead of reopened per 64 KB; out-of-range requests
+  get a proper `416` and the `Range` unit is validated. Piece arithmetic extracted to pure functions
+  with a 6-case unit test. Truncation on a genuinely dead swarm (no piece in 120 s) is retained as
+  the honest failure signal; the misleading error copy is item #21.
 
 - **#1 Release signing stability** — CI now aborts a tagged (`v*`) release when the release-keystore
   secrets are absent, instead of silently debug-signing a non-upgradeable APK; the signing

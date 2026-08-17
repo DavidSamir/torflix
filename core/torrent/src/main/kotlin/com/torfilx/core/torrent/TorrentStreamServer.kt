@@ -18,6 +18,21 @@ import kotlin.math.min
 
 private const val TAG = "TorrentHttp"
 
+/** Piece index (clamped to the torrent) that holds [fileByteOffset] of a file at [fileOffset]. */
+internal fun pieceIndexOf(fileOffset: Long, pieceLength: Int, numPieces: Int, fileByteOffset: Long): Int =
+    ((fileOffset + fileByteOffset) / pieceLength).toInt().coerceIn(0, numPieces - 1)
+
+/**
+ * Bytes from [fileByteOffset] to the end of the piece that contains it — the maximum a single read
+ * may cover without spilling into the following piece. Pure arithmetic, unit-tested, because getting
+ * it wrong feeds zero-filled holes to the decoder.
+ */
+internal fun bytesUntilPieceEnd(fileOffset: Long, pieceLength: Int, fileByteOffset: Long): Long {
+    val absolute = fileOffset + fileByteOffset
+    val nextBoundary = ((absolute / pieceLength) + 1) * pieceLength.toLong()
+    return (nextBoundary - absolute).coerceAtLeast(1L)
+}
+
 /** One torrent being streamed, plus the piece bookkeeping that makes seeking work. */
 internal class StreamedTorrent(
     val infoHash: String,
@@ -51,10 +66,20 @@ internal class StreamedTorrent(
 
     /** Piece index containing [fileByteOffset] of the selected file. */
     fun pieceOf(fileByteOffset: Long): Int =
-        ((fileOffset + fileByteOffset) / pieceLength).toInt().coerceIn(0, numPieces - 1)
+        pieceIndexOf(fileOffset, pieceLength, numPieces, fileByteOffset)
 
     fun hasByte(fileByteOffset: Long): Boolean =
         runCatching { handle.havePiece(pieceOf(fileByteOffset)) }.getOrDefault(false)
+
+    /**
+     * Bytes from [fileByteOffset] to the end of the piece that contains it.
+     *
+     * A read is capped to this so it never spans into the next piece: `havePiece` is verified for
+     * the piece at the read position, but the following piece may still be a hole in the sparse file
+     * that would read back as zeros and feed corrupt data to the decoder.
+     */
+    fun bytesUntilPieceEnd(fileByteOffset: Long): Long =
+        bytesUntilPieceEnd(fileOffset, pieceLength, fileByteOffset)
 
     /**
      * Prioritises the pieces just after [fileByteOffset].
@@ -175,9 +200,13 @@ internal class TorrentStreamServer {
                 val line = input.readLine() ?: break
                 if (line.isEmpty()) break
                 if (line.startsWith("Range:", ignoreCase = true)) {
-                    val spec = line.substringAfter('=', "").trim()
-                    rangeStart = spec.substringBefore('-').toLongOrNull() ?: 0L
-                    rangeEnd = spec.substringAfter('-').toLongOrNull() ?: -1L
+                    // Only byte ranges are understood; any other unit is ignored (served as full).
+                    val value = line.substringAfter(':').trim()
+                    if (value.startsWith("bytes=", ignoreCase = true)) {
+                        val spec = value.substringAfter('=').trim()
+                        rangeStart = (spec.substringBefore('-').toLongOrNull() ?: 0L).coerceAtLeast(0L)
+                        rangeEnd = spec.substringAfter('-').toLongOrNull() ?: -1L
+                    }
                 }
             }
 
@@ -190,15 +219,32 @@ internal class TorrentStreamServer {
             }
 
             val total = streamed.fileSizeBytes
+            val rangeRequested = rangeStart > 0 || rangeEnd >= 0
+
+            // A range starting at or past the end of the file is unsatisfiable. Answer 416 rather
+            // than a technically-invalid 0-length 206, which some ExoPlayer data sources treat as a
+            // hard error.
+            if (rangeRequested && rangeStart >= total) {
+                output.write(
+                    (
+                        "HTTP/1.1 416 Range Not Satisfiable\r\n" +
+                            "Content-Range: bytes */$total\r\n" +
+                            "Content-Length: 0\r\nConnection: close\r\n\r\n"
+                        ).toByteArray(),
+                )
+                output.flush()
+                return
+            }
+
             val end = if (rangeEnd in 0 until total) rangeEnd else total - 1
             val length = (end - rangeStart + 1).coerceAtLeast(0)
 
             val headers = buildString {
-                append(if (rangeStart > 0 || rangeEnd >= 0) "HTTP/1.1 206 Partial Content\r\n" else "HTTP/1.1 200 OK\r\n")
+                append(if (rangeRequested) "HTTP/1.1 206 Partial Content\r\n" else "HTTP/1.1 200 OK\r\n")
                 append("Content-Type: video/mp4\r\n")
                 append("Accept-Ranges: bytes\r\n")
                 append("Content-Length: $length\r\n")
-                if (rangeStart > 0 || rangeEnd >= 0) {
+                if (rangeRequested) {
                     append("Content-Range: bytes $rangeStart-$end/$total\r\n")
                 }
                 append("Connection: close\r\n\r\n")
@@ -220,41 +266,52 @@ internal class TorrentStreamServer {
         length: Long,
         output: BufferedOutputStream,
     ) {
+        val file = streamed.filePath
+        if (!file.exists()) {
+            TorfilxLog.w(TAG, "Torrent file not on disk yet: ${file.name}")
+            return
+        }
+
         val buffer = ByteArray(CHUNK_BYTES)
         var position = start
         var remaining = length
 
-        while (remaining > 0) {
-            if (!awaitPiece(streamed, position)) {
-                TorfilxLog.w(TAG, "Timed out waiting for piece at $position")
-                return
-            }
-            // Re-prioritise as playback advances so the swarm stays ahead of the read head.
-            if ((position - start) % PRIORITISE_EVERY_BYTES < CHUNK_BYTES) {
-                streamed.prioritiseFrom(position)
-            }
+        // One handle for the whole response: re-opening it for every 64 KB chunk was hundreds of
+        // thousands of syscalls per movie on a weak Fire TV CPU.
+        RandomAccessFile(file, "r").use { raf ->
+            while (remaining > 0) {
+                if (!awaitPiece(streamed, position)) {
+                    TorfilxLog.w(TAG, "Timed out waiting for piece at $position; ending stream")
+                    return
+                }
+                // Re-prioritise as playback advances so the swarm stays ahead of the read head.
+                if ((position - start) % PRIORITISE_EVERY_BYTES < CHUNK_BYTES) {
+                    streamed.prioritiseFrom(position)
+                }
 
-            val file = streamed.filePath
-            if (!file.exists()) {
-                TorfilxLog.w(TAG, "Torrent file not on disk yet: ${file.name}")
-                return
-            }
-
-            val toRead = min(remaining, CHUNK_BYTES.toLong()).toInt()
-            val read = RandomAccessFile(file, "r").use { raf ->
-                if (raf.length() <= position) return@use 0
+                // Never read past the end of the piece just confirmed present: a read that crossed
+                // into the next (possibly not-yet-downloaded) piece would return zero-filled holes
+                // from the sparse file and hand corrupt bytes to the decoder.
+                val toRead = minOf(remaining, CHUNK_BYTES.toLong(), streamed.bytesUntilPieceEnd(position))
+                val fileLen = raf.length()
+                if (fileLen <= position) {
+                    // Data verified present but not yet flushed to the file; wait briefly and retry.
+                    Thread.sleep(WAIT_STEP_MS)
+                    continue
+                }
+                val readable = min(toRead, fileLen - position).toInt()
                 raf.seek(position)
-                raf.read(buffer, 0, min(toRead.toLong(), raf.length() - position).toInt())
+                val read = raf.read(buffer, 0, readable)
+                if (read <= 0) {
+                    Thread.sleep(WAIT_STEP_MS)
+                    continue
+                }
+                output.write(buffer, 0, read)
+                output.flush()
+                position += read
+                remaining -= read
+                streamed.lastTouchedMs = System.currentTimeMillis()
             }
-            if (read <= 0) {
-                Thread.sleep(WAIT_STEP_MS)
-                continue
-            }
-            output.write(buffer, 0, read)
-            output.flush()
-            position += read
-            remaining -= read
-            streamed.lastTouchedMs = System.currentTimeMillis()
         }
     }
 
