@@ -7,6 +7,7 @@ import com.torfilx.core.torrent.LibTorrentEngine
 import com.torfilx.core.torrent.SharingConsentProvider
 import com.torfilx.core.torrent.SharingStats
 import com.torfilx.core.torrent.StorageBudget
+import com.torfilx.core.torrent.TorrentConfigProvider
 import com.torfilx.core.torrent.TorrentEngine
 import com.torfilx.core.torrent.TorrentStream
 import dagger.Binds
@@ -58,6 +59,16 @@ class TorrentCoordinator @Inject constructor(
                 runCatching { engine.enforceStorageBudget() }
             }
             .launchIn(scope)
+
+        // Keep the engine's synchronous config snapshot current. These take effect on the next play;
+        // they are not applied mid-stream because they change how a session is built.
+        settingsRepository.settings
+            .onEach { s ->
+                settingsRepository.cachedUseDht = s.useDht
+                settingsRepository.cachedUseExtraTrackers = s.useExtraTrackers
+                settingsRepository.cachedMetadataTimeoutSeconds = s.metadataTimeout.seconds
+            }
+            .launchIn(scope)
     }
 
     fun isAvailable(): Boolean = engine.isAvailable()
@@ -94,6 +105,16 @@ class SettingsSharingConsentProvider @Inject constructor(
     override fun hasConsented(): Boolean = settingsRepository.cachedSharingConsent
 }
 
+/** Bridges the persisted engine preferences into the engine, synchronously. */
+@Singleton
+class SettingsTorrentConfigProvider @Inject constructor(
+    private val settingsRepository: SettingsRepository,
+) : TorrentConfigProvider {
+    override fun useDht(): Boolean = settingsRepository.cachedUseDht
+    override fun useExtraTrackers(): Boolean = settingsRepository.cachedUseExtraTrackers
+    override fun metadataTimeoutMs(): Long = settingsRepository.cachedMetadataTimeoutSeconds * 1000L
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class TorrentCoordinatorModule {
@@ -102,4 +123,10 @@ abstract class TorrentCoordinatorModule {
     abstract fun bindsSharingConsentProvider(
         impl: SettingsSharingConsentProvider,
     ): SharingConsentProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindsTorrentConfigProvider(
+        impl: SettingsTorrentConfigProvider,
+    ): TorrentConfigProvider
 }

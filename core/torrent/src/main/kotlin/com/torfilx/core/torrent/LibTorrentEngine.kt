@@ -22,7 +22,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionManager
-import org.libtorrent4j.SessionParams
 import org.libtorrent4j.SettingsPack
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.swig.settings_pack
@@ -46,6 +45,7 @@ private const val TAG = "Torrent"
 class LibTorrentEngine @Inject constructor(
     @ApplicationContext private val context: Context,
     private val consentProvider: SharingConsentProvider,
+    private val config: TorrentConfigProvider,
     @Dispatcher(TorfilxDispatcher.IO) private val ioDispatcher: CoroutineDispatcher,
     @ApplicationScope private val scope: CoroutineScope,
 ) : TorrentEngine {
@@ -65,6 +65,9 @@ class LibTorrentEngine @Inject constructor(
         get() = runCatching { sessionRef }.getOrElse { throw TorrentError.EngineUnavailable(it) }
     private val sessionMutex = Mutex()
     private val streamServer = TorrentStreamServer()
+
+    /** Records network events so a failed play can explain itself on screen (see [diagnosticsText]). */
+    private val diagnostics = TorrentDiagnostics()
     /** Streaming *and* seeding torrents; a torrent leaves this map only when it is removed. */
     private val managedTorrents = java.util.concurrent.ConcurrentHashMap<String, StreamedTorrent>()
 
@@ -110,64 +113,62 @@ class LibTorrentEngine @Inject constructor(
             if (started) return@withLock
             if (!isAvailable()) throw TorrentError.EngineUnavailable(null)
 
-            val settings = SettingsPack().apply {
+            // Attach the diagnostics listener before the session starts so no early alert is missed.
+            runCatching { session.addListener(diagnostics) }
+
+            // Start with the LIBRARY'S OWN default session, then layer our tweaks on top.
+            //
+            // This is a hard-won correction. Handing libtorrent a hand-built SettingsPack makes that
+            // pack the entire configuration, and any field we left out — crucially the listen
+            // interfaces and the DHT/LSD defaults — comes up empty rather than at libtorrent's
+            // carefully chosen default. The symptom was a session that never bound a listen socket,
+            // never announced to a tracker, and never bootstrapped the DHT: total silence on the
+            // network. libtorrent4j's no-arg start() uses the C++ defaults (which *do* bind and
+            // *do* enable the DHT) and only sets the bootstrap nodes; we do the same, then apply our
+            // limits with applySettings() once the session is up and correctly listening.
+            runCatching { session.start() }
+                .onFailure { throw TorrentError.EngineUnavailable(it) }
+
+            val tweaks = SettingsPack().apply {
                 // Modest limits: a Fire Stick has a weak CPU and shares the household Wi-Fi.
                 setInteger(settings_pack.int_types.active_downloads.swigValue(), MAX_ACTIVE_DOWNLOADS)
                 setInteger(settings_pack.int_types.active_seeds.swigValue(), MAX_ACTIVE_SEEDS)
                 setInteger(settings_pack.int_types.connections_limit.swigValue(), CONNECTION_LIMIT)
-                setInteger(settings_pack.int_types.alert_queue_size.swigValue(), ALERT_QUEUE_SIZE)
                 setBoolean(settings_pack.bool_types.enable_dht.swigValue(), true)
                 setBoolean(settings_pack.bool_types.enable_lsd.swigValue(), true)
                 setString(settings_pack.string_types.user_agent.swigValue(), USER_AGENT)
-
-                // Spelled out rather than left to the library's defaults. This pack is handed
-                // straight to SessionParams, which takes it as the whole configuration — so an
-                // entry we do not set is empty, not defaulted. With no bootstrap routers the DHT
-                // never joins, no peers are ever found, and every magnet dies on "no peers
-                // responded with torrent details" no matter how long the timeout is.
-                setString(
-                    settings_pack.string_types.dht_bootstrap_nodes.swigValue(),
-                    DHT_BOOTSTRAP_NODES,
-                )
-                setString(
-                    settings_pack.string_types.listen_interfaces.swigValue(),
-                    LISTEN_INTERFACES,
-                )
                 // Upload is only allowed once the user has consented to sharing.
                 setInteger(
                     settings_pack.int_types.upload_rate_limit.swigValue(),
                     if (consentProvider.hasConsented()) 0 else 1,
                 )
             }
+            runCatching { session.applySettings(tweaks) }
+                .onFailure { TorfilxLog.w(TAG, "Could not apply tuning settings (continuing)", it) }
 
-            runCatching { session.start(SessionParams(settings)) }
-
-            // Starting the session does not necessarily start the DHT: enable_dht in the settings
-            // pack is a preference, not an instruction, and without the DHT a magnet has only its
-            // trackers to go on — which is why every title failed with "no peers responded".
+            // Honour the user's DHT preference. On by default; a network that blocks or is harmed by
+            // the DHT can turn it off in Settings and rely on trackers. Never fail either way.
             runCatching {
-                if (!session.isDhtRunning()) {
-                    session.startDht()
-                    TorfilxLog.i(TAG, "DHT was not running; started it explicitly")
+                if (config.useDht()) {
+                    if (!session.isDhtRunning()) {
+                        session.startDht()
+                        TorfilxLog.i(TAG, "DHT started")
+                    }
+                } else if (session.isDhtRunning()) {
+                    session.stopDht()
+                    TorfilxLog.i(TAG, "DHT disabled by setting")
                 }
-            }.onFailure { TorfilxLog.w(TAG, "Could not start the DHT", it) }
-
-            // Give the routing table a moment to fill. Announcing to an empty DHT finds nobody, and
-            // the node count is the one number that says whether we are actually on the network.
-            runCatching {
-                var waited = 0L
-                while (session.dhtNodes() <= 0 && waited < DHT_BOOTSTRAP_WAIT_MS) {
-                    delay(DHT_POLL_INTERVAL_MS)
-                    waited += DHT_POLL_INTERVAL_MS
-                }
-                TorfilxLog.i(TAG, "DHT nodes after ${waited}ms: ${session.dhtNodes()}")
-            }
-                .onFailure { throw TorrentError.EngineUnavailable(it) }
+            }.onFailure { TorfilxLog.w(TAG, "Could not toggle the DHT (continuing on trackers)", it) }
 
             started = true
             streamServer.start()
             startStatusPolling()
-            TorfilxLog.i(TAG, "Torrent session started (dir=${downloadDir.absolutePath})")
+            TorfilxLog.i(
+                TAG,
+                "Torrent session started (dir=${downloadDir.absolutePath}, dhtRunning=${
+                    runCatching { session.isDhtRunning() }.getOrDefault(false)
+                })",
+            )
         }
     }
 
@@ -197,7 +198,9 @@ class LibTorrentEngine @Inject constructor(
             return@withContext existing.toStream(streamServer.port)
         }
 
-        session.download(magnet, downloadDir)
+        diagnostics.markAttemptStart()
+        runCatching { session.download(magnet, downloadDir) }
+            .onFailure { throw TorrentError.InvalidMagnet(magnet) }
 
         // libtorrent4j 1.2's download() strips AUTO_MANAGED from the add-torrent flags but leaves
         // libtorrent's default PAUSED flag in place — and the auto-manager is the only thing that
@@ -205,25 +208,24 @@ class LibTorrentEngine @Inject constructor(
         // metadata and every title dies with "no peers responded". (2.x keeps AUTO_MANAGED, which
         // is why the same code worked there.) libtorrent4j's own fetchMagnet() resumes for exactly
         // this reason; so do we, the moment the handle exists.
-        var resumed = false
+        var prepared = false
 
         // Metadata arrives from peers; without it there is nothing to prioritise or serve.
-        val handle = withTimeoutOrNull(METADATA_TIMEOUT_MS) {
+        val handle = withTimeoutOrNull(config.metadataTimeoutMs()) {
             var found: TorrentHandle? = null
             while (found == null) {
                 val candidate = session.find(infoHash.toSha1Hash())
                 if (candidate != null && candidate.isValid) {
-                    if (!resumed) {
-                        runCatching { candidate.resume() }
-                        resumed = true
-                        TorfilxLog.i(TAG, "Torrent added and resumed; waiting for metadata")
+                    if (!prepared) {
+                        prepareHandle(candidate, magnet)
+                        prepared = true
                     }
                     if (candidate.torrentFile() != null) found = candidate
                 }
                 delay(POLL_INTERVAL_MS)
             }
             found
-        } ?: throw TorrentError.MetadataTimeout()
+        } ?: throw TorrentError.MetadataTimeout(diagnosticsText("metadata timeout"))
 
         val info = handle.torrentFile() ?: throw TorrentError.MetadataTimeout()
         val files = info.files()
@@ -408,6 +410,39 @@ class LibTorrentEngine @Inject constructor(
         )
     }
 
+    /**
+     * Resumes a freshly added torrent and widens its peer sources.
+     *
+     * Resuming is mandatory (see the call site). Adding well-known public trackers on top of
+     * whatever the magnet carried means peer discovery does not depend on any single path: a network
+     * that blocks the DHT may still reach trackers, and a magnet whose own trackers are dead (several
+     * in older catalogues are) still has a live one to fall back on.
+     */
+    private fun prepareHandle(handle: TorrentHandle, magnet: String) {
+        runCatching { handle.resume() }
+        if (config.useExtraTrackers()) {
+            val existing = runCatching { handle.trackers().mapNotNull { it.url() }.toSet() }
+                .getOrDefault(emptySet())
+            FALLBACK_TRACKERS.filterNot { it in existing }.forEach { url ->
+                runCatching { handle.addTracker(org.libtorrent4j.AnnounceEntry(url)) }
+            }
+        }
+        runCatching { handle.forceReannounce() }
+        TorfilxLog.i(
+            TAG,
+            "Torrent resumed; ${handle.trackers().size} trackers, waiting for metadata " +
+                "(name=${MagnetLink.displayName(magnet) ?: "?"})",
+        )
+    }
+
+    /** The on-screen, photographable diagnosis of a failed play attempt. Also written to the log. */
+    private fun diagnosticsText(reason: String): String {
+        val nodes = runCatching { session.dhtNodes() }.getOrDefault(-1L)
+        val running = runCatching { session.isDhtRunning() }.getOrDefault(false)
+        diagnostics.logSnapshot(reason, nodes, running)
+        return diagnostics.summary(nodes, running)
+    }
+
     private fun freeSpaceBytes(): Long = runCatching {
         val stat = StatFs(downloadDir.absolutePath)
         stat.availableBlocksLong * stat.blockSizeLong
@@ -426,28 +461,22 @@ class LibTorrentEngine @Inject constructor(
         const val MAX_ACTIVE_DOWNLOADS = 2
         const val MAX_ACTIVE_SEEDS = 4
         const val CONNECTION_LIMIT = 120
-        const val ALERT_QUEUE_SIZE = 2_000
-        const val USER_AGENT = "Torfilx/1.0 libtorrent/2.x"
-        /** How long to let the DHT routing table fill before asking it for peers. */
-        const val DHT_BOOTSTRAP_WAIT_MS = 20_000L
-        const val DHT_POLL_INTERVAL_MS = 1_000L
-
-        /** The public DHT routers a client bootstraps from; without these the DHT never joins. */
-        const val DHT_BOOTSTRAP_NODES =
-            "router.bittorrent.com:6881,dht.transmissionbt.com:6881," +
-                "router.utorrent.com:6881,dht.libtorrent.org:25401"
-
-        /** Listen on every interface, IPv4 and IPv6. */
-        const val LISTEN_INTERFACES = "0.0.0.0:6881,[::]:6881"
+        const val USER_AGENT = "Torfilx/1.0 libtorrent/1.2"
 
         /**
-         * How long to wait for peers to send the torrent details.
-         *
-         * Generous on purpose. A Fire TV stick joining a swarm from a cold start has to bootstrap
-         * DHT, reach the trackers over a home connection and find a peer holding the metadata, all
-         * on a 2016 CPU. A minute is enough on a desktop and routinely is not here.
+         * Live public trackers added to every torrent so peer discovery never rests on the DHT
+         * alone. Kept current deliberately: dead trackers in a magnet are harmless, but a client
+         * with *only* dead trackers and a blocked DHT finds nobody.
          */
-        const val METADATA_TIMEOUT_MS = 120_000L
+        val FALLBACK_TRACKERS = listOf(
+            "udp://tracker.opentrackr.org:1337/announce",
+            "udp://open.tracker.cl:1337/announce",
+            "udp://open.demonii.com:1337/announce",
+            "udp://tracker.torrent.eu.org:451/announce",
+            "udp://exodus.desync.com:6969/announce",
+            "https://tracker.tamersunion.org:443/announce",
+        )
+
         const val POLL_INTERVAL_MS = 250L
         const val STATUS_POLL_MS = 1_000L
         val VIDEO_EXTENSIONS = listOf(".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".mpg", ".mpeg")
@@ -457,4 +486,22 @@ class LibTorrentEngine @Inject constructor(
 /** Supplies the user's sharing decision to the engine without the engine knowing about settings. */
 interface SharingConsentProvider {
     fun hasConsented(): Boolean
+}
+
+/**
+ * Supplies the user's engine preferences synchronously.
+ *
+ * The engine reads configuration from paths that cannot suspend (session start, the metadata wait),
+ * so it takes a plain provider rather than a coroutine flow. Defaults reproduce built-in behaviour,
+ * so an implementation that returns them changes nothing.
+ */
+interface TorrentConfigProvider {
+    /** Whether to use the DHT for peer discovery. */
+    fun useDht(): Boolean = true
+
+    /** Whether to add the built-in public trackers on top of a magnet's own. */
+    fun useExtraTrackers(): Boolean = true
+
+    /** How long to wait for a swarm to deliver a title's metadata. */
+    fun metadataTimeoutMs(): Long = 120_000L
 }

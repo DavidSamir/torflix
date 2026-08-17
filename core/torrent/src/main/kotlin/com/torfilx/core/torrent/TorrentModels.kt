@@ -79,7 +79,12 @@ sealed class TorrentError(message: String, cause: Throwable? = null) : Exception
     class NoSpace(needed: Long, available: Long) :
         TorrentError("Not enough free space (needs ${needed / 1_000_000} MB, ${available / 1_000_000} MB free)")
 
-    class MetadataTimeout : TorrentError("No peers responded with torrent details")
+    class MetadataTimeout(diagnostics: String? = null) : TorrentError(
+        buildString {
+            append("No peers responded with torrent details")
+            if (!diagnostics.isNullOrBlank()) append("\n\n").append(diagnostics)
+        },
+    )
     class NoPlayableFile : TorrentError("The torrent contains no playable video file")
     class EngineUnavailable(cause: Throwable?) :
         TorrentError("The torrent engine could not start on this device", cause)

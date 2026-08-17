@@ -13,6 +13,8 @@ import com.torfilx.core.common.di.Dispatcher
 import com.torfilx.core.common.di.TorfilxDispatcher
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.model.AppSettings
+import com.torfilx.core.model.MetadataTimeout
+import com.torfilx.core.model.StreamingMode
 import com.torfilx.core.model.QualityPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -72,6 +74,11 @@ class SettingsRepository @Inject constructor(
         val SHARING_CONSENT_SEEN = booleanPreferencesKey("sharing_consent_seen")
         val SEEDING_ENABLED = booleanPreferencesKey("seeding_enabled")
         val STORAGE_FRACTION = stringPreferencesKey("storage_fraction")
+        val USE_DHT = booleanPreferencesKey("use_dht")
+        val USE_EXTRA_TRACKERS = booleanPreferencesKey("use_extra_trackers")
+        val METADATA_TIMEOUT = stringPreferencesKey("metadata_timeout")
+        val STREAMING_MODE = stringPreferencesKey("streaming_mode")
+        val FORCE_SOFTWARE_DECODER = booleanPreferencesKey("force_software_decoder")
     }
 
     val settings: Flow<AppSettings> = preferences
@@ -96,6 +103,15 @@ class SettingsRepository @Inject constructor(
                 frameRateMatching = prefs[Keys.FRAME_RATE_MATCHING] ?: true,
                 tunneledPlayback = prefs[Keys.TUNNELED_PLAYBACK] ?: true,
                 skipIntroAutomatically = prefs[Keys.SKIP_INTRO_AUTO] ?: false,
+                useDht = prefs[Keys.USE_DHT] ?: true,
+                useExtraTrackers = prefs[Keys.USE_EXTRA_TRACKERS] ?: true,
+                metadataTimeout = prefs[Keys.METADATA_TIMEOUT]?.let { name ->
+                    runCatching { MetadataTimeout.valueOf(name) }.getOrNull()
+                } ?: MetadataTimeout.STANDARD,
+                streamingMode = prefs[Keys.STREAMING_MODE]?.let { name ->
+                    runCatching { StreamingMode.valueOf(name) }.getOrNull()
+                } ?: StreamingMode.SEQUENTIAL,
+                forceSoftwareDecoder = prefs[Keys.FORCE_SOFTWARE_DECODER] ?: false,
             )
         }
 
@@ -143,9 +159,23 @@ class SettingsRepository @Inject constructor(
         it[Keys.STORAGE_FRACTION] = fraction.coerceIn(0.1f, 0.9f).toString()
     }
 
-    /** Synchronous read for the torrent engine, which cannot suspend inside libtorrent callbacks. */
-    
+    suspend fun setUseDht(enabled: Boolean) = edit { it[Keys.USE_DHT] = enabled }
+    suspend fun setUseExtraTrackers(enabled: Boolean) = edit { it[Keys.USE_EXTRA_TRACKERS] = enabled }
+    suspend fun setMetadataTimeout(value: MetadataTimeout) = edit { it[Keys.METADATA_TIMEOUT] = value.name }
+    suspend fun setStreamingMode(mode: StreamingMode) = edit { it[Keys.STREAMING_MODE] = mode.name }
+    suspend fun setForceSoftwareDecoder(enabled: Boolean) =
+        edit { it[Keys.FORCE_SOFTWARE_DECODER] = enabled }
+
+    // Synchronous snapshots for the torrent engine and player factory, which read configuration from
+    // inside native callbacks and construction paths that cannot suspend. Kept current by the layer
+    // that observes the flows above (see TorrentCoordinator).
     var cachedSharingConsent: Boolean = false
+        internal set
+    var cachedUseDht: Boolean = true
+        internal set
+    var cachedUseExtraTrackers: Boolean = true
+        internal set
+    var cachedMetadataTimeoutSeconds: Int = MetadataTimeout.STANDARD.seconds
         internal set
 
     companion object {

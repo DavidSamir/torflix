@@ -25,7 +25,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.torfilx.core.model.MetadataTimeout
 import com.torfilx.core.model.QualityPreference
+import com.torfilx.core.model.StreamingMode
 import com.torfilx.core.ui.component.KeyboardLayout
 import com.torfilx.core.ui.component.OnScreenKeyboard
 import com.torfilx.core.ui.component.SearchField
@@ -204,6 +206,53 @@ fun SettingsScreen(
                 }
             }
 
+            item(key = "engine") {
+                SettingsSection("Streaming engine") {
+                    Text(
+                        text = "Defaults suit most devices. Change these if a title will not start or " +
+                            "stutters — they take effect the next time you press Play.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TorfilxColors.TextSecondary,
+                    )
+                    SettingsToggleRow(
+                        label = "Find peers with DHT",
+                        description = "The distributed peer network. Turn off only if your network blocks it.",
+                        checked = state.settings.useDht,
+                        onToggle = viewModel::setUseDht,
+                    )
+                    SettingsToggleRow(
+                        label = "Use extra public trackers",
+                        description = "Adds well-known trackers so titles find peers even when a magnet's own are dead.",
+                        checked = state.settings.useExtraTrackers,
+                        onToggle = viewModel::setUseExtraTrackers,
+                    )
+                    SettingsToggleRow(
+                        label = "Force software video decoding",
+                        description = "Try this if video is black, glitchy, or refuses to play on this device.",
+                        checked = state.settings.forceSoftwareDecoder,
+                        onToggle = viewModel::setForceSoftwareDecoder,
+                    )
+                    SettingsChoiceRow(label = "Time to find a title") {
+                        MetadataTimeout.entries.forEach { option ->
+                            TvChip(
+                                text = option.label,
+                                selected = state.settings.metadataTimeout == option,
+                                onClick = { viewModel.setMetadataTimeout(option) },
+                            )
+                        }
+                    }
+                    SettingsChoiceRow(label = "Streaming mode") {
+                        StreamingMode.entries.forEach { mode ->
+                            TvChip(
+                                text = mode.label,
+                                selected = state.settings.streamingMode == mode,
+                                onClick = { viewModel.setStreamingMode(mode) },
+                            )
+                        }
+                    }
+                }
+            }
+
             item(key = "maintenance") {
                 SettingsSection("Maintenance") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -309,6 +358,24 @@ private fun SettingsValueRow(
             )
         }
         TvButton(text = "Change", onClick = onClick, primary = false)
+    }
+}
+
+/** A labelled row whose right side is a set of choice chips supplied by the caller. */
+@Composable
+private fun SettingsChoiceRow(label: String, chips: @Composable () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TorfilxColors.TextPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { chips() }
     }
 }
 

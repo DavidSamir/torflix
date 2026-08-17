@@ -8,7 +8,9 @@ import com.torfilx.core.data.repository.MediaRepository
 import com.torfilx.core.data.settings.SettingsRepository
 import com.torfilx.core.data.torrent.TorrentCoordinator
 import com.torfilx.core.model.AppSettings
+import com.torfilx.core.model.MetadataTimeout
 import com.torfilx.core.model.QualityPreference
+import com.torfilx.core.model.StreamingMode
 import com.torfilx.core.torrent.SharingStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -114,6 +116,15 @@ class SettingsViewModel @Inject constructor(
     fun setTunneledPlayback(enabled: Boolean) = launchSetting { settingsRepository.setTunneledPlayback(enabled) }
     fun setSkipIntroAutomatically(enabled: Boolean) =
         launchSetting { settingsRepository.setSkipIntroAutomatically(enabled) }
+
+    fun setUseDht(enabled: Boolean) = launchSetting { settingsRepository.setUseDht(enabled) }
+    fun setUseExtraTrackers(enabled: Boolean) =
+        launchSetting { settingsRepository.setUseExtraTrackers(enabled) }
+    fun setMetadataTimeout(value: MetadataTimeout) =
+        launchSetting { settingsRepository.setMetadataTimeout(value) }
+    fun setStreamingMode(mode: StreamingMode) = launchSetting { settingsRepository.setStreamingMode(mode) }
+    fun setForceSoftwareDecoder(enabled: Boolean) =
+        launchSetting { settingsRepository.setForceSoftwareDecoder(enabled) }
 
     /** Clears downloaded torrent data; watch progress and My List are kept. */
     fun clearDownloadedData() {

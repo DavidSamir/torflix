@@ -65,6 +65,9 @@ class FrameRateMatcher @Inject constructor() {
     }
 
     private fun applyMode(window: Window, modeId: Int) {
+        // preferredDisplayModeId is API 23. reset() can reach here without a caller-side guard, so
+        // the check lives here; on API 22 there is no mode to restore anyway (originalModeId is null).
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         runCatching {
             val attributes: WindowManager.LayoutParams = window.attributes
             attributes.preferredDisplayModeId = modeId
@@ -87,6 +90,7 @@ class FrameRateMatcher @Inject constructor() {
      * Resolution is deliberately never changed: the UI is composed for the current output size, and
      * dropping from 4K to 1080p to gain a refresh rate would look worse than the judder it fixes.
      */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.M)
     internal fun bestMode(
         modes: List<Display.Mode>,
         currentMode: Display.Mode,

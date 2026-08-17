@@ -298,7 +298,7 @@ class PlaybackController @Inject constructor(
         lastUserInputMs = System.currentTimeMillis()
         if (_state.value.showStillWatching) {
             _state.value = _state.value.copy(showStillWatching = false)
-                player?.play()
+            player?.play()
         }
     }
 
@@ -639,8 +639,10 @@ class PlaybackController @Inject constructor(
             "This title.s magnet link is not valid, so it cannot be streamed.",
         )
 
+        // The message already carries the on-device diagnostics (DHT nodes, trackers, peers) so the
+        // viewer can photograph the screen and the failure is legible without a logcat.
         is TorrentError.MetadataTimeout -> PlaybackError.Network(
-            "No peers are sharing this title right now.",
+            message ?: "No peers are sharing this title right now.",
         )
 
         is TorrentError.NoPlayableFile -> PlaybackError.Unsupported(
@@ -648,7 +650,10 @@ class PlaybackController @Inject constructor(
         )
 
         is TorrentError.EngineUnavailable -> PlaybackError.Unsupported(
-            "BitTorrent is not supported on this device.",
+            buildString {
+                append("BitTorrent could not start on this device.")
+                cause?.message?.let { append("\n\n").append(it) }
+            },
         )
     }
 

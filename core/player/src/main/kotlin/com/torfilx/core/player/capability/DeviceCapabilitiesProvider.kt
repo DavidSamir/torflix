@@ -176,15 +176,14 @@ class DeviceCapabilitiesProvider @Inject constructor(
         val display = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)
             ?: return DisplayInfo(1920, 1080, emptySet(), emptyList())
 
-        // Display.getSupportedModes is API 23; older devices report a single fixed mode.
-        val modes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            runCatching { display.supportedModes.toList() }.getOrDefault(emptyList())
+        // Display.Mode (getSupportedModes and its fields) is API 23; older devices report a single
+        // fixed mode. The whole read is done in one API-23 helper so the version guard is a single,
+        // lint-visible boundary rather than repeated per field access.
+        val modeInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            readModeInfo(display)
         } else {
-            emptyList()
+            ModeInfo(1920, 1080, emptyList())
         }
-        val maxWidth = modes.maxOfOrNull { it.physicalWidth } ?: 1920
-        val maxHeight = modes.maxOfOrNull { it.physicalHeight } ?: 1080
-        val refreshRates = modes.map { it.refreshRate }.distinct().sorted()
 
         val hdrTypes = mutableSetOf<HdrType>()
         // HDR capability reporting arrived in API 24; on Fire OS 6 (API 25) it exists, but the guard
@@ -201,7 +200,20 @@ class DeviceCapabilitiesProvider @Inject constructor(
             }
         }.onFailure { TorfilxLog.w(TAG, "HDR capability query failed", it) }
 
-        return DisplayInfo(maxWidth, maxHeight, hdrTypes, refreshRates)
+        return DisplayInfo(modeInfo.maxWidth, modeInfo.maxHeight, hdrTypes, modeInfo.refreshRates)
+    }
+
+    private data class ModeInfo(val maxWidth: Int, val maxHeight: Int, val refreshRates: List<Float>)
+
+    /** Reads the display's supported modes. API 23+: every field here needs it. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.M)
+    private fun readModeInfo(display: Display): ModeInfo {
+        val modes = runCatching { display.supportedModes.toList() }.getOrDefault(emptyList())
+        return ModeInfo(
+            maxWidth = modes.maxOfOrNull { it.physicalWidth } ?: 1920,
+            maxHeight = modes.maxOfOrNull { it.physicalHeight } ?: 1080,
+            refreshRates = modes.map { it.refreshRate }.distinct().sorted(),
+        )
     }
 
     /**

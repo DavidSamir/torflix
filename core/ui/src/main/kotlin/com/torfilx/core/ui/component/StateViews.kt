@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -117,12 +119,26 @@ fun ErrorState(
                 color = TorfilxColors.TextPrimary,
                 textAlign = TextAlign.Center,
             )
+            // A message may carry a technical diagnostic after a blank line. The human sentence stays
+            // at full size; the diagnostic is shown smaller and monospaced so it is clearly a
+            // read-out to photograph, not prose, and never crowds the headline.
+            val parts = message.split("\n\n", limit = 2)
             Text(
-                text = message,
+                text = parts[0],
                 style = MaterialTheme.typography.bodyLarge,
                 color = TorfilxColors.TextSecondary,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(max = 760.dp),
             )
+            if (parts.size > 1) {
+                Text(
+                    text = parts[1],
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                    color = TorfilxColors.TextTertiary,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.widthIn(max = 760.dp),
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (primaryActionLabel != null && onPrimaryAction != null) {
                     TvButton(text = primaryActionLabel, onClick = onPrimaryAction, autoFocus = true)
