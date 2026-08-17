@@ -18,7 +18,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **9. Data loss on reinstall** — progress / My List / settings are local-only with `allowBackup=false` and no export. _(Added file-based backup/restore of watch data; Google Auto Backup doesn't exist on Fire OS.)_
 - [x] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
 - [x] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
-- [ ] **12. CI quality gate dead** — lint never runs in CI; baseline hides a fatal `Instantiatable`.
+- [x] **12. CI quality gate dead** — lint never runs in CI; baseline hides a fatal `Instantiatable`.
 - [ ] **13. Player focus loss** — focus can be stranded after controls auto-hide.
 - [ ] **14. No tests on riskiest code** — torrent engine, stream server, playback controller, real catalog parser.
 
@@ -42,6 +42,15 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#12 CI quality gate** — CI now runs `:app:lintRelease` after the unit tests, so the strict lint
+  config (warningsAsErrors, abortOnError) actually gates the build. The fatal `Instantiatable` false
+  positive is suppressed precisely on the service with `tools:ignore` (not baselined), so a genuine
+  non-instantiatable component would still fail. Regenerated the baseline to capture only known
+  cosmetic/opt-in debt (icons, Media3 , targetSdk) — 25 filtered, 0 new — so lint fails
+  on any NEW issue. Also removed the leftover LAN network-security config: no more user-installed CA
+  trust (a real release MITM vector) and no invalid CIDR domains; only the loopback stream server
+  keeps cleartext.
 
 - **#11 Room migration trap** — added an instrumented MigrationTestHelper test that replays the
   exported schemas (verified: ran on the API 22 emulator, 1 test, 0 failures) and is the template

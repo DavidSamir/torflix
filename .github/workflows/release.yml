@@ -79,6 +79,11 @@ jobs:
       - name: Unit tests
         run: ./gradlew test --no-daemon --stacktrace
 
+      # The strict lint gate (warningsAsErrors, abortOnError) only protects anything if it actually
+      # runs. It is baselined against known cosmetic debt, so this fails the build on *new* issues.
+      - name: Lint
+        run: ./gradlew :app:lintRelease --no-daemon --stacktrace
+
       # Signing: a real keystore is used when the repository secrets are present, otherwise the
       # debug key. A debug-signed APK sideloads onto a Fire TV fine — what matters is that every
       # build uses the *same* key, or the device refuses to upgrade in place.

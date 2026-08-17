@@ -43,10 +43,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Instantiatable is a lint false positive: PlaybackService extends Media3's
+             MediaSessionService (a Service), which lint cannot resolve across the AAR boundary. It
+             instantiates fine at runtime. Suppressed here precisely rather than baselined, so a
+             genuinely non-instantiatable component would still be caught. -->
         <service
             android:name="com.torfilx.core.player.service.PlaybackService"
             android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
+            android:foregroundServiceType="mediaPlayback"
+            tools:ignore="Instantiatable">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
