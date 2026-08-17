@@ -21,6 +21,31 @@ permissions:
   contents: write
 
 jobs:
+  # Instrumented tests need an emulator, so they run in their own job. It does not gate the release
+  # job (an emulator can be flaky in CI), but it does run the Room migration test — the guard against
+  # the first schema change crash-looping every device — on every push and PR.
+  instrumented:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Migration + instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          script: ./gradlew :core:data:connectedDebugAndroidTest --no-daemon --stacktrace
+
   build:
     runs-on: ubuntu-latest
 

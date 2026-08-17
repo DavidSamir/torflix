@@ -20,7 +20,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
 - [x] **12. CI quality gate dead** — lint never runs in CI; baseline hides a fatal `Instantiatable`.
 - [x] **13. Player focus loss** — focus can be stranded after controls auto-hide.
-- [ ] **14. No tests on riskiest code** — torrent engine, stream server, playback controller, real catalog parser.
+- [x] **14. No tests on riskiest code** — torrent engine, stream server, playback controller, real catalog parser.
 
 ## Tier 2 — Medium
 
@@ -42,6 +42,15 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#14 Tests on riskiest code** — extracted the catalogue parser to a pure `parseCatalog(raw, json)`
+  and added a 6-case test that exercises the *real* parser (magnet validation, id de-duplication,
+  genre normalisation, year/quality parsing, unknown-field tolerance) rather than a copy of its
+  rules. Wired instrumented tests into CI: a separate emulator job runs the Room migration test on
+  every push/PR (non-release-blocking, since emulators can be flaky). Combined with earlier work,
+  the pure logic is now covered — piece-boundary math (#2), storage budget + magnet validation,
+  catalogue parse, and backup round-trip (#9). The torrent engine and stream-server socket paths
+  remain integration-tested on-device rather than unit-tested, as they need the native library.
 
 - **#13 Player focus loss** — root focus is now re-requested whenever the controls overlay hides,
   so after the 4s auto-hide removes the focused scrubber subtree the D-pad keeps reaching the

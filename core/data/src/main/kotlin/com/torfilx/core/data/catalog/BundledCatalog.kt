@@ -125,11 +125,24 @@ class BundledCatalog @Inject constructor(
 
     private fun load(): List<CatalogItem> = runCatching {
         val raw = context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
-        val entries = json.decodeFromString<List<CatalogEntryDto>>(raw)
+        parseCatalog(raw, json)
+    }.getOrElse { error ->
+        TorfilxLog.e(TAG, "Bundled catalogue could not be read", error)
+        emptyList()
+    }
+}
 
-        val usedIds = HashSet<String>(entries.size)
+/**
+ * Parses the catalogue JSON into validated items. Pure (no `Context`), so the *real* parser — magnet
+ * validation, id de-duplication, genre normalisation, year/quality parsing — is unit-tested against
+ * real JSON rather than a re-implementation of the same rules.
+ */
+internal fun parseCatalog(raw: String, json: Json): List<CatalogItem> {
+    val entries = json.decodeFromString<List<CatalogEntryDto>>(raw)
 
-        entries.mapIndexedNotNull { index, entry ->
+    val usedIds = HashSet<String>(entries.size)
+
+    return entries.mapIndexedNotNull { index, entry ->
             val title = entry.title.trim()
             if (title.isEmpty()) {
                 TorfilxLog.w(TAG, "Catalogue entry $index has no title; skipped")
@@ -191,22 +204,18 @@ class BundledCatalog @Inject constructor(
                 sources = sources,
             )
         }.also { TorfilxLog.i(TAG, "Bundled catalogue: ${it.size} titles") }
-    }.getOrElse { error ->
-        TorfilxLog.e(TAG, "Bundled catalogue could not be read", error)
-        emptyList()
-    }
+}
 
-    private fun String.slug(): String = lowercase()
-        .map { if (it.isLetterOrDigit()) it else '-' }
-        .joinToString("")
-        .replace(Regex("-+"), "-")
-        .trim('-')
+private fun String.slug(): String = lowercase()
+    .map { if (it.isLetterOrDigit()) it else '-' }
+    .joinToString("")
+    .replace(Regex("-+"), "-")
+    .trim('-')
 
-    private fun String.qualityHeight(): Int? = when {
-        contains("2160") || contains("4k", ignoreCase = true) -> 2160
-        contains("1080") -> 1080
-        contains("720") -> 720
-        contains("480") -> 480
-        else -> null
-    }
+private fun String.qualityHeight(): Int? = when {
+    contains("2160") || contains("4k", ignoreCase = true) -> 2160
+    contains("1080") -> 1080
+    contains("720") -> 720
+    contains("480") -> 480
+    else -> null
 }
