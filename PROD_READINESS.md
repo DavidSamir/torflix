@@ -31,7 +31,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **19. Wire `NetworkMonitor`** — no offline affordance, no mid-stream recovery; remove dead banners.
 - [x] **20. Engine efficiency** — uncapped upload, RAF-per-chunk, metadata busy-poll.
 - [x] **21. "Media server" copy remnants** — wrong wording for a torrent-only app.
-- [ ] **22. Update hygiene** — no in-app update check; versionCode decoupled from tag.
+- [x] **22. Update hygiene** — no in-app update check; versionCode decoupled from tag.
 - [ ] **23. Log export usefulness** — no date on timestamps (wraps at 24h); no device model; external-storage export.
 
 ## Tier 3 — Low
@@ -42,6 +42,12 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#22 Update hygiene** — CI now fails a tagged release when the tag (e.g. v0.2.0) does not match
+  the app versionName in build.gradle.kts, so a release can no longer ship an APK whose reported
+  version disagrees with its tag (and which a device might refuse to treat as an upgrade). An
+  in-app update checker was deliberately deferred: it needs the API-22 bundled-CA TLS handling to
+  reach the GitHub API, and assumes public releases, which is uncertain if the repo goes private.
 
 - **#21 "Media server" copy** — fixed the user-facing strings that still referenced a media server
   the torrent-only app no longer has: the player network/not-found errors ("connection dropped

@@ -81,6 +81,18 @@ jobs:
           fi
           echo "Release keystore secrets present."
 
+      # A release tag and the APK's own version must agree, or devices see a "new" release whose
+      # APK reports an unchanged version and may refuse to treat it as an upgrade.
+      - name: Check tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | grep -oE '[0-9][^"]*')
+          if [ "v$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match versionName $version in app/build.gradle.kts"
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches versionName $version."
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
