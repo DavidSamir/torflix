@@ -43,6 +43,9 @@ interface MyListDao {
     @Query("SELECT itemId FROM my_list")
     fun observeIds(): Flow<List<String>>
 
+    @Query("SELECT * FROM my_list")
+    suspend fun all(): List<MyListEntity>
+
     @Query("SELECT * FROM my_list WHERE itemId = :itemId")
     suspend fun get(itemId: String): MyListEntity?
 

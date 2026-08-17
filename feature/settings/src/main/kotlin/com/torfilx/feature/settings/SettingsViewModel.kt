@@ -50,6 +50,7 @@ class SettingsViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val torrentCoordinator: TorrentCoordinator,
     private val crashStore: com.torfilx.core.common.log.CrashStore,
+    private val userDataBackup: com.torfilx.core.data.backup.UserDataBackup,
 ) : ViewModel() {
 
     private val message = MutableStateFlow<String?>(null)
@@ -184,6 +185,52 @@ class SettingsViewModel @Inject constructor(
         appendLine("---- log ----")
         append(TorfilxLog.dump())
     }
+
+    /**
+     * Writes watch progress + My List to a JSON file the user can copy off the device.
+     *
+     * Fire OS has no cloud backup, so this is the only way that data survives a reinstall or a stick
+     * swap: back it up, copy the file off (adb pull, or a file manager), and restore after
+     * reinstalling.
+     */
+    fun backupUserData() {
+        viewModelScope.launch {
+            message.value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = backupFile()
+                    file.writeText(userDataBackup.exportToJson())
+                    "Watch data backed up to ${file.absolutePath}. Copy it somewhere safe."
+                }.getOrElse {
+                    TorfilxLog.w(TAG, "Backup failed", it)
+                    "Could not back up watch data: ${it.message}"
+                }
+            }
+        }
+    }
+
+    /** Restores watch progress + My List from the backup file, if present. */
+    fun restoreUserData() {
+        viewModelScope.launch {
+            message.value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = backupFile()
+                    if (!file.exists()) {
+                        "No backup found at ${file.absolutePath}. Copy your backup file there first."
+                    } else {
+                        val result = userDataBackup.importFromJson(file.readText())
+                        "Restored ${result.progressRestored} watch positions and " +
+                            "${result.myListRestored} saved titles."
+                    }
+                }.getOrElse {
+                    TorfilxLog.w(TAG, "Restore failed", it)
+                    "Could not restore watch data: ${it.message}"
+                }
+            }
+        }
+    }
+
+    private fun backupFile(): File =
+        File(context.getExternalFilesDir(null) ?: context.filesDir, "torfilx-backup.json")
 
     fun dismissMessage() {
         message.value = null

@@ -253,6 +253,21 @@ fun SettingsScreen(
                 }
             }
 
+            item(key = "userdata") {
+                SettingsSection("Watch data") {
+                    Text(
+                        text = "Continue Watching and My List live only on this device. Back them up " +
+                            "and copy the file off to keep them across a reinstall or a new stick.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TorfilxColors.TextSecondary,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TvButton(text = "Back up watch data", onClick = viewModel::backupUserData, primary = false)
+                        TvButton(text = "Restore watch data", onClick = viewModel::restoreUserData, primary = false)
+                    }
+                }
+            }
+
             item(key = "maintenance") {
                 SettingsSection("Maintenance") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
