@@ -16,7 +16,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **7. Seeding/privacy** — session never stopped on normal exit; seeding continues with no indicator; no VPN/kill-switch; watching requires uploading. _(Session now stops on app exit; VPN kill-switch and the watch-requires-upload coupling remain as design decisions — see done log.)_
 - [x] **8. Foreground service** — started with `startService`; no notification channel; `POST_NOTIFICATIONS` never requested → FGS crash risk on Android 12/13. _(Mostly already correct: Media3 self-promotes and creates the channel; added the API-33+ runtime permission request. No current Fire TV is API 33.)_
 - [x] **9. Data loss on reinstall** — progress / My List / settings are local-only with `allowBackup=false` and no export. _(Added file-based backup/restore of watch data; Google Auto Backup doesn't exist on Fire OS.)_
-- [ ] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
+- [x] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
 - [ ] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
 - [ ] **12. CI quality gate dead** — lint never runs in CI; baseline hides a fatal `Instantiatable`.
 - [ ] **13. Player focus loss** — focus can be stranded after controls auto-hide.
@@ -42,6 +42,11 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#10 lastTouched data race** — the eviction bookkeeping map was a plain HashMap written from the
+  status poller (Default dispatcher) and read from enforceStorageBudget (IO); made it a
+  ConcurrentHashMap so concurrent access can no longer throw ConcurrentModificationException or
+  corrupt its internal state.
 
 - **#9 Data loss on reinstall** — Fire OS has no Google backup transport, so Auto Backup would be a
   no-op on the target device (and would leak watch history to Google on those that do have it, which

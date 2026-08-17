@@ -374,7 +374,9 @@ class LibTorrentEngine @Inject constructor(
     @Volatile
     var storageBudget: StorageBudget = StorageBudget.DEFAULT
 
-    private val lastTouched = mutableMapOf<String, Long>()
+    // Read from enforceStorageBudget (IO) and written from the status poller (Default), so it must
+    // be concurrent — a plain HashMap touched from two dispatchers risks ConcurrentModificationException.
+    private val lastTouched = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private fun startStatusPolling() {
         scope.launch {
