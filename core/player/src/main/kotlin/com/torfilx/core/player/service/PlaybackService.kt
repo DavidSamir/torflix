@@ -5,11 +5,13 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.torfilx.core.common.di.ApplicationScope
 import com.torfilx.core.common.log.TorfilxLog
+import com.torfilx.core.data.torrent.TorrentCoordinator
 import com.torfilx.core.player.PlaybackController
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 private const val TAG = "PlaybackService"
@@ -30,6 +32,9 @@ class PlaybackService : MediaSessionService() {
     @Inject
     @ApplicationScope
     lateinit var appScope: CoroutineScope
+
+    @Inject
+    lateinit var torrentCoordinator: TorrentCoordinator
 
     private var mediaSession: MediaSession? = null
 
@@ -58,21 +63,30 @@ class PlaybackService : MediaSessionService() {
 
     /**
      * The app was swiped away from the launcher's recents. A TV video app should not keep playing
-     * invisibly, so playback stops — but only after the position has been saved (plan.md §7.6).
+     * invisibly, so playback stops — and so does the torrent session, so nothing keeps uploading to
+     * the swarm (and exposing the viewer's IP) after they have left the app (plan.md §7.6).
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
         playbackController.stop(release = false)
+        stopTorrentSession()
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
-        // The service going away is the one genuine teardown: now the reused player is released.
+        // The service going away is the one genuine teardown: release the reused player and stop the
+        // torrent session so no seeding continues in the background without a foreground component.
         playbackController.stop(release = true)
+        stopTorrentSession()
         mediaSession?.run {
             release()
             mediaSession = null
         }
         super.onDestroy()
+    }
+
+    /** Best-effort stop of the BitTorrent session; the process may be reaped before it finishes. */
+    private fun stopTorrentSession() {
+        appScope.launch { runCatching { torrentCoordinator.shutdown() } }
     }
 }

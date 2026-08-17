@@ -14,6 +14,7 @@ import com.torfilx.core.player.service.PlaybackService
 import com.torfilx.core.ui.theme.TorfilxTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 private const val TAG = "MainActivity"
 
@@ -34,6 +35,13 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var displayModeController: DisplayModeController
+
+    @Inject
+    lateinit var torrentCoordinator: com.torfilx.core.data.torrent.TorrentCoordinator
+
+    @Inject
+    @com.torfilx.core.common.di.ApplicationScope
+    lateinit var applicationScope: kotlinx.coroutines.CoroutineScope
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -61,6 +69,9 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         if (isFinishing) {
             playbackController.stop(release = true)
+            // Leaving the app for good also stops the torrent session, so nothing keeps seeding
+            // (uploading, and exposing the viewer's IP) in the background after they are gone.
+            applicationScope.launch { runCatching { torrentCoordinator.shutdown() } }
         }
         // Always hand the TV back its original display mode when we lose the screen.
         displayModeController.detach(this)

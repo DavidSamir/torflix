@@ -13,7 +13,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ## Tier 1 — High
 
-- [ ] **7. Seeding/privacy** — session never stopped on normal exit; seeding continues with no indicator; no VPN/kill-switch; watching requires uploading.
+- [x] **7. Seeding/privacy** — session never stopped on normal exit; seeding continues with no indicator; no VPN/kill-switch; watching requires uploading. _(Session now stops on app exit; VPN kill-switch and the watch-requires-upload coupling remain as design decisions — see done log.)_
 - [ ] **8. Foreground service** — started with `startService`; no notification channel; `POST_NOTIFICATIONS` never requested → FGS crash risk on Android 12/13.
 - [ ] **9. Data loss on reinstall** — progress / My List / settings are local-only with `allowBackup=false` and no export.
 - [ ] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
@@ -42,6 +42,14 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#7 Seeding/privacy** — the torrent session is now stopped when the app is exited (activity
+  finishing), swiped from recents (`onTaskRemoved`) or the service is destroyed, so nothing keeps
+  seeding — uploading and advertising the viewer's IP — in the background after they leave. Within
+  the app, post-playback seeding still works and is visible in Settings. **Still open, as design
+  decisions rather than bugs:** there is no VPN-bind / kill-switch (the public IP is exposed to the
+  swarm while streaming), and watching requires consenting to upload (no leech-only mode). Both are
+  deliberate product/legal choices to make, not defects to patch silently.
 
 - **#5 Field failure visibility** — added `CrashStore`: the crash guard now writes each uncaught
   exception (with device, OS, app version, thread and full stack) to app-private disk, so it
