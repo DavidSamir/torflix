@@ -137,10 +137,12 @@ class LibTorrentEngine @Inject constructor(
                 setBoolean(settings_pack.bool_types.enable_dht.swigValue(), true)
                 setBoolean(settings_pack.bool_types.enable_lsd.swigValue(), true)
                 setString(settings_pack.string_types.user_agent.swigValue(), USER_AGENT)
-                // Upload is only allowed once the user has consented to sharing.
+                // Upload is only allowed once the user has consented to sharing, and even then it is
+                // capped rather than unlimited: seeding must not saturate the household uplink and
+                // degrade the viewer's own streaming (or everything else on the network).
                 setInteger(
                     settings_pack.int_types.upload_rate_limit.swigValue(),
-                    if (consentProvider.hasConsented()) 0 else 1,
+                    if (consentProvider.hasConsented()) UPLOAD_RATE_LIMIT_BYTES else 1,
                 )
             }
             runCatching { session.applySettings(tweaks) }
@@ -356,7 +358,7 @@ class LibTorrentEngine @Inject constructor(
                 SettingsPack().apply {
                     setInteger(
                         settings_pack.int_types.upload_rate_limit.swigValue(),
-                        if (consented) 0 else 1,
+                        if (consented) UPLOAD_RATE_LIMIT_BYTES else 1,
                     )
                 },
             )
@@ -527,6 +529,9 @@ class LibTorrentEngine @Inject constructor(
         const val MAX_ACTIVE_SEEDS = 4
         const val CONNECTION_LIMIT = 120
         const val USER_AGENT = "Torfilx/1.0 libtorrent/1.2"
+
+        /** Upload cap while sharing (bytes/sec). Contributes to the swarm without hogging the uplink. */
+        const val UPLOAD_RATE_LIMIT_BYTES = 2 * 1024 * 1024
 
         /**
          * Live public trackers added to every torrent so peer discovery never rests on the DHT
