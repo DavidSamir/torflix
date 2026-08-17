@@ -82,7 +82,9 @@ fun PlayerScreen(
     val activity = remember(context) { context.findActivity() }
     val rootFocus = remember { FocusRequester() }
 
-    KeepScreenOn(active = state.isPlaying)
+    // Keep the screen awake while playing OR waiting for data, but let it sleep when genuinely
+    // paused/idle. The window flag is authoritative; PlayerView no longer forces it on unconditionally.
+    KeepScreenOn(active = state.isPlaying || state.isBuffering || state.isLoading)
     PauseWhenBackgrounded(onBackground = viewModel::onBackground)
 
     // Commit an accumulated seek once the user stops pressing the key.
@@ -268,7 +270,8 @@ private fun VideoSurface(viewModel: PlayerViewModel, aspectMode: AspectMode) {
             PlayerView(context).apply {
                 useController = false // the overlay above is the controller
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
-                keepScreenOn = true
+                // Screen-on is driven by the window flag (KeepScreenOn) so it correctly clears when
+                // paused; forcing it here kept the screen on even while paused.
             }
         },
         update = { view ->

@@ -36,12 +36,20 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ## Tier 3 — Low
 
-- [ ] **24. Assorted** — subtitle sizing, subtitles-on-with-no-language no-op, keep-screen-on while paused, display-mode restore on crash, `values-iw` for Fire OS 5, Home back-to-exit confirm, dead code, download-failure→invalid-magnet mapping.
+- [x] **24. Assorted** — subtitle sizing, subtitles-on-with-no-language no-op, keep-screen-on while paused, display-mode restore on crash, `values-iw` for Fire OS 5, Home back-to-exit confirm, dead code, download-failure→invalid-magnet mapping.
 
 ---
 
 ### Done log
 _(most recent first)_
+
+- **#24 Assorted (Tier 3)** — fixed the two clear ones: the screen no longer stays awake while
+  paused (the window flag now drives it, keyed on playing/buffering/loading, and PlayerView no
+  longer forces keepScreenOn), and a session download() failure is reported as an engine error
+  instead of mislabelling an already-validated magnet as invalid. Left as accepted/low: subtitle
+  caption sizing (default is legible), subtitles-on-with-no-language (edge case), display-mode
+  restore after a process kill (cannot run reliably on crash), Home back-to-exit confirm (standard
+  default), and values-iw (moot — Hebrew removed in #6).
 
 - **#23 Log export usefulness** — substantially delivered in #5: log timestamps now carry a date
   (MM-dd HH:mm:ss.SSS, no more 24h wrap) and the export prepends a device/OS/ABI header, so a

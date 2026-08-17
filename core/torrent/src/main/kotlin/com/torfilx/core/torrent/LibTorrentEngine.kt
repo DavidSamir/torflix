@@ -217,8 +217,10 @@ class LibTorrentEngine @Inject constructor(
         }
 
         diagnostics.markAttemptStart()
+        // The magnet was already validated at the top of stream(), so a failure here is a session
+        // problem, not a bad link — reporting it as an invalid magnet would mislead the user.
         runCatching { session.download(magnet, downloadDir) }
-            .onFailure { throw TorrentError.InvalidMagnet(magnet) }
+            .onFailure { throw TorrentError.EngineUnavailable(it) }
 
         // libtorrent4j 1.2's download() strips AUTO_MANAGED from the add-torrent flags but leaves
         // libtorrent's default PAUSED flag in place — and the auto-manager is the only thing that
