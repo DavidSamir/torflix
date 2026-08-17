@@ -34,7 +34,6 @@ import com.torfilx.core.ui.theme.TorfilxColors
 /** Which character set the on-screen keyboard is showing. */
 enum class KeyboardLayout(val label: String) {
     LATIN("ABC"),
-    HEBREW("אבג"),
     NUMBERS("123"),
 }
 
@@ -44,13 +43,6 @@ private val LATIN_ROWS = listOf(
     "MNOPQR",
     "STUVWX",
     "YZ'-",
-)
-
-private val HEBREW_ROWS = listOf(
-    "אבגדהו",
-    "זחטיכל",
-    "מנסעפצ",
-    "קרשת",
 )
 
 private val NUMBER_ROWS = listOf(
@@ -76,7 +68,6 @@ fun OnScreenKeyboard(
 ) {
     val rows = when (layout) {
         KeyboardLayout.LATIN -> LATIN_ROWS
-        KeyboardLayout.HEBREW -> HEBREW_ROWS
         KeyboardLayout.NUMBERS -> NUMBER_ROWS
     }
 

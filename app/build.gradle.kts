@@ -13,7 +13,7 @@ android {
         versionCode = 9
         versionName = "0.1.9"
         testInstrumentationRunner = "com.torfilx.tv.HiltTestRunner"
-        resourceConfigurations += setOf("en", "he")
+        resourceConfigurations += setOf("en")
     }
 
     buildFeatures {

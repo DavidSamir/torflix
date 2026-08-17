@@ -9,7 +9,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **3. Uncaught exceptions on the play path** — `open()`/`retry()` only catch `TorrentError`/`DataError`; anything else crashes the app.
 - [x] **4. Storage safety** — active download never capped (disk fills), orphaned data can't be evicted after restart, "Clear data" doesn't delete files. `NoSpace` never thrown.
 - [x] **5. Field failure visibility** — no remote crash/error capture, and the in-memory crash log is destroyed when CrashGuard restarts the process. _(Durable on-disk crash reports + export; true auto-telemetry needs a backend and is out of scope without one.)_
-- [ ] **6. Localization / RTL** — all strings hardcoded; `values-he` untranslated; decide in (externalize + translate + RTL) or out (drop the `he` config).
+- [x] **6. Localization / RTL** — all strings hardcoded; `values-he` untranslated; decide in (externalize + translate + RTL) or out (drop the `he` config). _(Decided out: Hebrew removed, ships English-only.)_
 
 ## Tier 1 — High
 
@@ -42,6 +42,11 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#6 Localization** — decided English-only. Removed the unused Hebrew resource config
+  (`resourceConfigurations` is now just `en`), deleted the empty `values-he` folder (which also
+  clears the `LocaleFolder` lint error), and dropped the Hebrew on-screen-keyboard layout. The app
+  now honestly ships as English-only; no half-built bilingual surface remains.
 
 - **#7 Seeding/privacy** — the torrent session is now stopped when the app is exited (activity
   finishing), swiped from recents (`onTaskRemoved`) or the service is destroyed, so nothing keeps
