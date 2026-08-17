@@ -92,7 +92,7 @@ class SearchViewModel @Inject constructor(
                 } catch (error: DataError) {
                     TorfilxLog.w(TAG, "Search failed", error)
                     results.value = emptyList()
-                    errorMessage.value = "Search is unavailable while the server is unreachable."
+                    errorMessage.value = "Search ran into a problem. Please try again."
                 } finally {
                     searching.value = false
                 }

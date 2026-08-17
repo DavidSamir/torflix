@@ -210,7 +210,7 @@ class PlaybackController @Inject constructor(
                         SourceSelector.Reason.ALL_SOURCES_FAILED ->
                             "This file could not be played on this device."
                         SourceSelector.Reason.NO_SOURCES ->
-                            "The server did not offer any playable version of this item."
+                            "This title has no playable version."
                         else ->
                             "This file's video or audio format is not supported by this device."
                     },
@@ -679,10 +679,10 @@ class PlaybackController @Inject constructor(
             error = when (error.errorCode) {
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-                -> PlaybackError.Network("Lost connection to the media server.")
+                -> PlaybackError.Network("The connection dropped while streaming.")
 
                 PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-                    PlaybackError.NotFound("This file is no longer available on the server.")
+                    PlaybackError.NotFound("This title is no longer available.")
 
                 PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED ->
                     PlaybackError.Unsupported("This file is encrypted and cannot be played.")

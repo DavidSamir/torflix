@@ -30,7 +30,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **18. Accessibility** — chips/toggles/scrubber/search unlabeled for VoiceView.
 - [x] **19. Wire `NetworkMonitor`** — no offline affordance, no mid-stream recovery; remove dead banners.
 - [x] **20. Engine efficiency** — uncapped upload, RAF-per-chunk, metadata busy-poll.
-- [ ] **21. "Media server" copy remnants** — wrong wording for a torrent-only app.
+- [x] **21. "Media server" copy remnants** — wrong wording for a torrent-only app.
 - [ ] **22. Update hygiene** — no in-app update check; versionCode decoupled from tag.
 - [ ] **23. Log export usefulness** — no date on timestamps (wraps at 24h); no device model; external-storage export.
 
@@ -42,6 +42,12 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#21 "Media server" copy** — fixed the user-facing strings that still referenced a media server
+  the torrent-only app no longer has: the player network/not-found errors ("connection dropped
+  while streaming", "no longer available", title "Connection lost"), the no-sources message, and
+  the search failure copy (search is local, so it never blamed a server). Internal comments
+  referencing the old server design were left as-is.
 
 - **#20 Engine efficiency** — capped the seeding upload rate at 2 MB/s instead of unlimited (0),
   so sharing contributes to the swarm without saturating the household uplink and degrading the

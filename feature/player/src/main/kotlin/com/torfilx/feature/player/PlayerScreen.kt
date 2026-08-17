@@ -345,7 +345,7 @@ private fun PlayerErrorOverlay(
     val sharingOff = error is PlaybackError.SharingNotEnabled
     ErrorState(
         title = when (error) {
-            is PlaybackError.Network -> "Lost the server"
+            is PlaybackError.Network -> "Connection lost"
             is PlaybackError.Unsupported -> "Can't play this file"
             is PlaybackError.NotFound -> "Not available"
             is PlaybackError.Unauthorized -> "Access denied"
