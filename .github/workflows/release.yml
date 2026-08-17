@@ -35,6 +35,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A tagged release MUST be signed with the persistent release keystore. Without it AGP falls
+      # back to an ad-hoc debug key that is regenerated on every runner, and Android refuses to
+      # upgrade an installed app across a signing-key change. Fail the release loudly rather than
+      # publish a debug-signed APK that no existing user can update to.
+      - name: Require the release keystore for a tagged build
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          missing=""
+          [ -z "$KEYSTORE_B64" ] && missing="$missing TORFILX_KEYSTORE_BASE64"
+          [ -z "$TORFILX_KEYSTORE_PASSWORD" ] && missing="$missing TORFILX_KEYSTORE_PASSWORD"
+          [ -z "$TORFILX_KEY_ALIAS" ] && missing="$missing TORFILX_KEY_ALIAS"
+          [ -z "$TORFILX_KEY_PASSWORD" ] && missing="$missing TORFILX_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Release aborted — missing signing secret(s):$missing"
+            echo "A tagged release must use the persistent release keystore so installed users can"
+            echo "upgrade in place. Configure the secrets (see docs/RELEASING.md), then re-run; or"
+            echo "delete the tag if this was not meant to be a release."
+            exit 1
+          fi
+          echo "Release keystore secrets present."
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -77,6 +98,17 @@ jobs:
           sha256sum dist/torfilx-release.apk | tee dist/torfilx-release.apk.sha256
           ls -lh dist/
 
+      # Record which certificate actually signed the APK. A change in this fingerprint between
+      # releases is the exact condition that blocks in-place upgrades, so it is logged on every run.
+      - name: Record the signing certificate
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          if [ -x "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs dist/torfilx-release.apk | tee dist/signer-certs.txt
+          else
+            echo "apksigner not found; skipping certificate print." | tee dist/signer-certs.txt
+          fi
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -109,4 +141,4 @@ jobs:
             adb install -r torfilx-release.apk
             ```
 
-            Runs on Fire OS 5 and later (Android 5.1 / API 22). Signed with v1 + v2 schemes.
+            Runs on Fire OS 5 and later (Android 5.1 / API 22). Signed with the v1, v2 and v3 schemes.
