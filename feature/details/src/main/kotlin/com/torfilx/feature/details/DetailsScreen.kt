@@ -52,8 +52,10 @@ fun DetailsScreen(
     BackHandler(enabled = pendingTorrent != null) { viewModel.onConsentDeclined() }
 
     val play: (MediaSource) -> Unit = { source ->
-        // Consent is collected before the first byte moves, not after.
-        viewModel.requestTorrentPlayback(source)?.let { ready ->
+        // Consent is collected before the first byte moves, not after. The check reads the persisted
+        // value, so a viewer who has already agreed is never asked again — even if they press Play
+        // the instant this screen opens.
+        viewModel.requestTorrentPlayback(source) { ready ->
             onPlaySource(viewModel.itemIdForPlayback, ready.id)
         }
     }

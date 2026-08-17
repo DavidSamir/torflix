@@ -66,9 +66,21 @@ class PlaybackController @Inject constructor(
     var player: ExoPlayer? = null
         private set
 
+    /**
+     * The live player, observable so the video surface reliably re-attaches when the instance
+     * changes. A plain property is invisible to Compose, which left a new player's video unattached
+     * to the surface — audio played, the screen stayed black.
+     */
+    private val _playerFlow = MutableStateFlow<ExoPlayer?>(null)
+    val playerFlow: StateFlow<ExoPlayer?> = _playerFlow.asStateFlow()
+
     private var resolved: ResolvedPlayback? = null
     private var settings: AppSettings = AppSettings()
+
+    /** The settings the current player was built with; a change means it must be rebuilt. */
+    private var playerBuiltWith: AppSettings? = null
     private var positionJob: Job? = null
+    private var streamStatsJob: Job? = null
     private var lastUserInputMs: Long = 0L
     private var lastSavedPositionMs: Long = -1L
     private var pausedForAudioFocus: Boolean = false
@@ -101,12 +113,32 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    /** Creates the player if needed. Must be called from the main thread. */
+    /**
+     * Returns the player, creating it once and reusing it for the whole session.
+     *
+     * The player is deliberately **not** released between titles: it is bound to the MediaSession
+     * (remote/Alexa transport keys) once, and churning create/release on a Fire TV — which has a
+     * single hardware video decoder — leaks the decoder, so the second title plays audio with a
+     * black screen and eventually nothing plays at all. The one exception is a change to a
+     * player-construction setting (tunneling, software decoding, streaming mode): those genuinely
+     * require a rebuild, so the old player is released and a fresh one takes its place, and the
+     * MediaSession follows [playerFlow] to rebind.
+     *
+     * Must be called from the main thread.
+     */
     fun ensurePlayer(): ExoPlayer {
-        player?.let { return it }
+        val existing = player
+        if (existing != null && playerBuiltWith.affectsPlayerSameAs(settings)) return existing
+
+        existing?.let {
+            it.removeListener(listener)
+            it.release()
+        }
         val created = playerFactory.create(settings)
         created.addListener(listener)
         player = created
+        playerBuiltWith = settings
+        _playerFlow.value = created
         return created
     }
 
@@ -190,6 +222,7 @@ class PlaybackController @Inject constructor(
             try {
                 val stream = torrentCoordinator.stream(magnet)
                 activeTorrentInfoHash = stream.infoHash
+                startStreamStatsTicker(stream.infoHash)
                 stream.url
             } catch (error: TorrentError) {
                 TorfilxLog.w(TAG, "Torrent stream failed for ${request.playableId}", error)
@@ -440,6 +473,29 @@ class PlaybackController @Inject constructor(
         }
     }
 
+    /**
+     * Mirrors the active torrent's live status into the UI state, so the buffering overlay can show
+     * peers, speed and progress instead of a bare "Buffering…". Only runs while a torrent feeds the
+     * player; server sources leave [PlayerUiState.stream] null.
+     */
+    private fun startStreamStatsTicker(infoHash: String) {
+        streamStatsJob?.cancel()
+        streamStatsJob = scope.launch {
+            torrentCoordinator.torrents.collect { list ->
+                val status = list.firstOrNull { it.infoHash == infoHash } ?: return@collect
+                _state.value = _state.value.copy(
+                    stream = StreamStats(
+                        peers = status.peers,
+                        seeds = status.seeds,
+                        downloadBytesPerSecond = status.downloadRateBytesPerSecond,
+                        progress = status.progress,
+                        hasMetadata = status.hasMetadata,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun tick() {
         val exo = player ?: return
         val position = exo.currentPosition
@@ -480,7 +536,14 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    /** Saves and releases. Called when the player screen is left or the process is going away. */
+    /**
+     * Stops playback. Called when the player screen is left or the process is going away.
+     *
+     * `release = false` (leaving a title) keeps the player alive for the next one — it is only
+     * stopped and cleared, which frees the media source and its decoders but not the player itself,
+     * so the MediaSession binding survives and no decoder churn occurs. `release = true` is for
+     * genuine teardown (the service being destroyed).
+     */
     fun stop(release: Boolean = true) {
         saveProgress(force = true)
         activeTorrentInfoHash?.let { infoHash ->
@@ -490,13 +553,23 @@ class PlaybackController @Inject constructor(
         }
         positionJob?.cancel()
         positionJob = null
+        streamStatsJob?.cancel()
+        streamStatsJob = null
         val exo = player
-        if (release && exo != null) {
-            exo.removeListener(listener)
-            exo.release()
-            player = null
-        } else {
-            exo?.pause()
+        if (exo != null) {
+            if (release) {
+                exo.removeListener(listener)
+                exo.release()
+                player = null
+                playerBuiltWith = null
+                _playerFlow.value = null
+            } else {
+                // Keep the instance; just stop and clear so the reused player starts the next title
+                // from a clean state and does not hold the finished torrent's loopback URL.
+                exo.pause()
+                exo.stop()
+                exo.clearMediaItems()
+            }
         }
         _state.value = PlayerUiState(isLoading = false)
         resolved = null
@@ -664,6 +737,21 @@ class PlaybackController @Inject constructor(
         SubtitleFormat.PGS -> MimeTypes.APPLICATION_PGS
         SubtitleFormat.DVD_SUB -> MimeTypes.APPLICATION_VOBSUB
         SubtitleFormat.UNKNOWN -> MimeTypes.TEXT_VTT
+    }
+
+    /**
+     * True when a player built with the receiver would be configured identically to one built with
+     * [other] — i.e. no rebuild is needed. Only the settings [PlayerFactory] actually reads matter;
+     * a change to, say, autoplay must not throw away a working decoder.
+     */
+    private fun AppSettings?.affectsPlayerSameAs(other: AppSettings): Boolean {
+        val a = this ?: return false
+        return a.tunneledPlayback == other.tunneledPlayback &&
+            a.forceSoftwareDecoder == other.forceSoftwareDecoder &&
+            a.streamingMode == other.streamingMode &&
+            a.preferredAudioLanguage == other.preferredAudioLanguage &&
+            a.preferredSubtitleLanguage == other.preferredSubtitleLanguage &&
+            a.subtitlesEnabledByDefault == other.subtitlesEnabledByDefault
     }
 
     private companion object {

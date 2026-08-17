@@ -3,9 +3,13 @@ package com.torfilx.core.player.service
 import android.content.Intent
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.torfilx.core.common.di.ApplicationScope
 import com.torfilx.core.common.log.TorfilxLog
 import com.torfilx.core.player.PlaybackController
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import javax.inject.Inject
 
 private const val TAG = "PlaybackService"
@@ -23,6 +27,10 @@ class PlaybackService : MediaSessionService() {
     @Inject
     lateinit var playbackController: PlaybackController
 
+    @Inject
+    @ApplicationScope
+    lateinit var appScope: CoroutineScope
+
     private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
@@ -32,6 +40,18 @@ class PlaybackService : MediaSessionService() {
             mediaSession = MediaSession.Builder(this, player).build()
             TorfilxLog.i(TAG, "Media session created")
         }.onFailure { TorfilxLog.e(TAG, "Could not create media session", it) }
+
+        // The player can be rebuilt when a playback setting changes (tunneling, software decoding).
+        // Re-point the session at the current instance so remote and Alexa keys never drive a dead
+        // player.
+        playbackController.playerFlow
+            .onEach { player ->
+                if (player != null && mediaSession?.player !== player) {
+                    runCatching { mediaSession?.player = player }
+                        .onFailure { TorfilxLog.w(TAG, "Could not rebind media session player", it) }
+                }
+            }
+            .launchIn(appScope)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -47,6 +67,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        // The service going away is the one genuine teardown: now the reused player is released.
+        playbackController.stop(release = true)
         mediaSession?.run {
             release()
             mediaSession = null

@@ -57,4 +57,13 @@ object Format {
     /** Percentage complete, 0..100, for accessibility descriptions. */
     fun percentComplete(positionMs: Long, durationMs: Long): Int =
         if (durationMs <= 0) 0 else ((positionMs.toDouble() / durationMs) * 100).roundToInt().coerceIn(0, 100)
+
+    /** Download speed: `1.2 MB/s`, `840 KB/s`, `0 KB/s`. */
+    fun speed(bytesPerSecond: Int): String {
+        val bps = bytesPerSecond.coerceAtLeast(0)
+        return when {
+            bps >= 1_000_000 -> String.format(Locale.US, "%.1f MB/s", bps / 1_000_000.0)
+            else -> "${bps / 1000} KB/s"
+        }
+    }
 }

@@ -40,6 +40,9 @@ class TorrentCoordinator @Inject constructor(
 
     val stats: Flow<SharingStats> = engine.stats
 
+    /** Per-torrent status, so the player can show peers/speed/progress for the title it is streaming. */
+    val torrents: Flow<List<com.torfilx.core.torrent.TorrentStatus>> = engine.torrents
+
     init {
         settingsRepository.sharingConsent
             .onEach { consented ->

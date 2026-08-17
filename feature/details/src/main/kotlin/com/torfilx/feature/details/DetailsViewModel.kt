@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -79,19 +80,25 @@ class DetailsViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), DetailsUiState.Loading)
 
-    private val sharingConsent: StateFlow<Boolean> = settingsRepository.sharingConsent
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
-
     private val _pendingTorrentSource = MutableStateFlow<MediaSource?>(null)
 
     /** Non-null while the consent dialog is asking about this source. */
     val pendingTorrentSource: StateFlow<MediaSource?> = _pendingTorrentSource
 
-    /** Returns the source to play now, or null when consent has to be collected first. */
-    fun requestTorrentPlayback(source: MediaSource): MediaSource? {
-        if (sharingConsent.value) return source
-        _pendingTorrentSource.value = source
-        return null
+    /**
+     * Plays the source now if the viewer has already consented to sharing, otherwise raises the
+     * consent dialog. The consent flag is read from storage at the moment of the tap rather than
+     * from a screen-scoped cache, so an already-consented viewer is never asked again — the earlier
+     * cache started at `false` and lagged, which is why the dialog kept reappearing.
+     */
+    fun requestTorrentPlayback(source: MediaSource, onReady: (MediaSource) -> Unit) {
+        viewModelScope.launch {
+            if (settingsRepository.sharingConsent.first()) {
+                onReady(source)
+            } else {
+                _pendingTorrentSource.value = source
+            }
+        }
     }
 
     fun onConsentAccepted(onReady: (MediaSource) -> Unit) {

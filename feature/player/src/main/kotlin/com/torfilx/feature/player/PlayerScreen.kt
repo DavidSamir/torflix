@@ -19,11 +19,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -121,14 +124,18 @@ fun PlayerScreen(
                 if (!isKeyDown) return@onRemoteKey false
                 viewModel.noteUserInput()
                 when (key) {
+                    // ←/→ seek only while the overlay is hidden. With the overlay up they belong to
+                    // whatever control is focused — moving between the buttons, or scrubbing when the
+                    // timeline itself holds focus — so the root must not swallow them.
                     RemoteKeys.LEFT -> {
-                        viewModel.nudgeSeek(-SEEK_STEP_MS); true
+                        if (controlsVisible) false else { viewModel.nudgeSeek(-SEEK_STEP_MS); true }
                     }
 
                     RemoteKeys.RIGHT -> {
-                        viewModel.nudgeSeek(SEEK_STEP_MS); true
+                        if (controlsVisible) false else { viewModel.nudgeSeek(SEEK_STEP_MS); true }
                     }
 
+                    // The remote's dedicated transport keys always seek, overlay or not.
                     RemoteKeys.REWIND -> {
                         viewModel.nudgeSeek(-LONG_SEEK_STEP_MS); true
                     }
@@ -167,7 +174,7 @@ fun PlayerScreen(
         }
 
         if (state.isBuffering) {
-            BufferingIndicator()
+            BufferingIndicator(state = state)
         }
 
         // "Sharing is off" is not an error to report but a decision to ask for — the same dialog the
@@ -226,7 +233,7 @@ fun PlayerScreen(
                 state = state,
                 pendingSeekMs = pendingSeek,
                 onPlayPause = viewModel::togglePlayPause,
-                onSeekTo = viewModel::seekTo,
+                onNudgeSeek = viewModel::nudgeSeek,
                 onRestart = { viewModel.seekTo(0) },
                 onSelectAudio = viewModel::selectAudioTrack,
                 onSelectSubtitle = viewModel::selectSubtitleTrack,
@@ -244,7 +251,9 @@ fun PlayerScreen(
 
 @Composable
 private fun VideoSurface(viewModel: PlayerViewModel, aspectMode: AspectMode) {
-    val player = viewModel.player
+    // Observed, not read once: when the player instance changes between titles the surface must
+    // re-attach, or the next title plays with a black screen.
+    val player by viewModel.playerFlow.collectAsStateWithLifecycle()
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -255,7 +264,7 @@ private fun VideoSurface(viewModel: PlayerViewModel, aspectMode: AspectMode) {
             }
         },
         update = { view ->
-            view.player = player
+            if (view.player !== player) view.player = player
             view.resizeMode = when (aspectMode) {
                 AspectMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                 AspectMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -271,19 +280,50 @@ private fun VideoSurface(viewModel: PlayerViewModel, aspectMode: AspectMode) {
  * spinner that flashes on every seek looks broken (plan.md §7.4).
  */
 @Composable
-private fun BufferingIndicator() {
+private fun BufferingIndicator(state: PlayerUiState) {
     val visibleState = remember { androidx.compose.runtime.mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(BUFFERING_SPINNER_DELAY_MS)
         visibleState.value = true
     }
     if (!visibleState.value) return
+
+    val stream = state.stream
+    // Headline reflects the actual stage, so a long wait is never a mystery: finding peers, fetching
+    // the file listing, or genuinely buffering with peers connected.
+    val headline = when {
+        stream == null -> "Buffering…"
+        !stream.hasMetadata -> "Fetching file details…"
+        stream.peers <= 0 -> "Looking for peers…"
+        else -> "Buffering…"
+    }
+
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = "Buffering…",
-            style = MaterialTheme.typography.titleLarge,
-            color = TorfilxColors.TextPrimary,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = headline,
+                style = MaterialTheme.typography.titleLarge,
+                color = TorfilxColors.TextPrimary,
+            )
+            if (stream != null) {
+                val ahead = (state.bufferedAheadMs / 1000).coerceAtLeast(0)
+                val detail = buildString {
+                    append("${stream.peers} peers")
+                    if (stream.seeds > 0) append(" · ${stream.seeds} seeds")
+                    if (stream.downloadBytesPerSecond > 0) {
+                        append(" · ${Format.speed(stream.downloadBytesPerSecond)}")
+                    }
+                    append(" · ${(stream.progress * 100).toInt()}% downloaded")
+                    if (ahead > 0) append(" · ${ahead}s buffered")
+                }
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TorfilxColors.TextSecondary,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
     }
 }
 
@@ -353,7 +393,7 @@ private fun PlayerControls(
     state: PlayerUiState,
     pendingSeekMs: Long?,
     onPlayPause: () -> Unit,
-    onSeekTo: (Long) -> Unit,
+    onNudgeSeek: (Long) -> Unit,
     onRestart: () -> Unit,
     onSelectAudio: (String) -> Unit,
     onSelectSubtitle: (String?) -> Unit,
@@ -362,6 +402,10 @@ private fun PlayerControls(
     modifier: Modifier = Modifier,
 ) {
     val displayPosition = pendingSeekMs ?: state.positionMs
+    // The scrubber takes focus when the overlay opens, so ←/→ scrub straight away — matching the
+    // muscle memory from when the overlay is hidden. Pressing ↓ moves down to the button row.
+    val scrubberFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { scrubberFocus.requestFocus() } }
 
     Column(
         modifier = modifier
@@ -387,11 +431,13 @@ private fun PlayerControls(
             )
         }
 
-        Timeline(
+        ScrubBar(
             positionMs = displayPosition,
             bufferedMs = state.bufferedPositionMs,
             durationMs = state.durationMs,
             isScrubbing = pendingSeekMs != null,
+            focusRequester = scrubberFocus,
+            onNudgeSeek = onNudgeSeek,
         )
 
         Row(
@@ -414,7 +460,6 @@ private fun PlayerControls(
             TvButton(
                 text = if (state.isPlaying) "❚❚ Pause" else "▶ Play",
                 onClick = onPlayPause,
-                autoFocus = true,
             )
             TvButton(text = "↺ Restart", onClick = onRestart, primary = false)
             TvButton(
@@ -490,20 +535,35 @@ private fun TrackPickers(
 }
 
 @Composable
-private fun Timeline(
+private fun ScrubBar(
     positionMs: Long,
     bufferedMs: Long,
     durationMs: Long,
     isScrubbing: Boolean,
+    focusRequester: FocusRequester,
+    onNudgeSeek: (Long) -> Unit,
 ) {
     val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val bufferedFraction = if (durationMs > 0) (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    var focused by remember { mutableStateOf(false) }
 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(6.dp)
-            .background(TorfilxColors.ProgressTrack),
+            // Taller when focused so the scrubber is clearly the active control.
+            .height(if (focused) 12.dp else 6.dp)
+            .background(TorfilxColors.ProgressTrack)
+            .focusRequester(focusRequester)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .onRemoteKey { key, isKeyDown, _ ->
+                if (!isKeyDown) return@onRemoteKey false
+                when (key) {
+                    RemoteKeys.LEFT -> { onNudgeSeek(-SEEK_STEP_MS); true }
+                    RemoteKeys.RIGHT -> { onNudgeSeek(SEEK_STEP_MS); true }
+                    else -> false // ↑/↓ move focus to the buttons; OK/Back handled by the root
+                }
+            },
     ) {
         Box(
             Modifier
@@ -515,7 +575,12 @@ private fun Timeline(
             Modifier
                 .fillMaxWidth(fraction)
                 .fillMaxHeight()
-                .background(if (isScrubbing) TorfilxColors.Focus else TorfilxColors.ProgressFill),
+                .background(
+                    when {
+                        isScrubbing || focused -> TorfilxColors.Focus
+                        else -> TorfilxColors.ProgressFill
+                    },
+                ),
         )
     }
 }

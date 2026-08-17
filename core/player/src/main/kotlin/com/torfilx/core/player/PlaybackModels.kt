@@ -80,10 +80,27 @@ data class PlayerUiState(
     val isTranscoding: Boolean = false,
     /** Set while a display mode switch settles, so the UI can stay black instead of flashing. */
     val isSwitchingDisplayMode: Boolean = false,
+    /** Live streaming stats, non-null while the source is a torrent, so buffering can explain itself. */
+    val stream: StreamStats? = null,
 ) {
     val canSeek: Boolean get() = durationMs > 0 && error == null
     val remainingMs: Long get() = (durationMs - positionMs).coerceAtLeast(0)
+
+    /** Seconds of video already downloaded ahead of the play head. */
+    val bufferedAheadMs: Long get() = (bufferedPositionMs - positionMs).coerceAtLeast(0)
 }
+
+/**
+ * A snapshot of the torrent feeding the player, shown while buffering so the wait is legible: a
+ * viewer can see whether peers are being found and data is flowing, or whether it is stalled.
+ */
+data class StreamStats(
+    val peers: Int = 0,
+    val seeds: Int = 0,
+    val downloadBytesPerSecond: Int = 0,
+    val progress: Float = 0f,
+    val hasMetadata: Boolean = false,
+)
 
 /** Source data resolved for the current item, kept for retries and track mapping. */
 internal data class ResolvedPlayback(

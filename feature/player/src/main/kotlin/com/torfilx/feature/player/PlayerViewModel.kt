@@ -44,7 +44,8 @@ class PlayerViewModel @Inject constructor(
     private val _pendingSeekMs = MutableStateFlow<Long?>(null)
     val pendingSeekMs: StateFlow<Long?> = _pendingSeekMs.asStateFlow()
 
-    val player get() = controller.player
+    /** Observable so the video surface re-attaches whenever the player instance changes. */
+    val playerFlow: StateFlow<androidx.media3.exoplayer.ExoPlayer?> = controller.playerFlow
     val currentFrameRate: Float? get() = controller.currentFrameRate
 
     private val _skipIntroAutomatically = MutableStateFlow(false)
@@ -148,10 +149,15 @@ class PlayerViewModel @Inject constructor(
     fun noteUserInput() = controller.noteUserInput()
     fun dismissStillWatching(continueWatching: Boolean) = controller.dismissStillWatching(continueWatching)
 
-    /** Called when the player screen is left: saves progress, frees the decoder, restores the display. */
+    /**
+     * Called when the player screen is left: saves progress and stops playback, but keeps the
+     * player instance alive for the next title. Releasing it here churned the Fire TV's single
+     * video decoder and left later titles with sound but no picture; the reused player is only
+     * torn down when the playback service is destroyed.
+     */
     fun leavePlayer() {
         displayModeController.reset()
-        controller.stop(release = true)
+        controller.stop(release = false)
     }
 
     /** Called when the app goes to the background: TV video apps pause rather than play blind. */
@@ -159,7 +165,7 @@ class PlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         displayModeController.reset()
-        controller.stop(release = true)
+        controller.stop(release = false)
         super.onCleared()
     }
 
