@@ -32,7 +32,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **20. Engine efficiency** — uncapped upload, RAF-per-chunk, metadata busy-poll.
 - [x] **21. "Media server" copy remnants** — wrong wording for a torrent-only app.
 - [x] **22. Update hygiene** — no in-app update check; versionCode decoupled from tag.
-- [ ] **23. Log export usefulness** — no date on timestamps (wraps at 24h); no device model; external-storage export.
+- [x] **23. Log export usefulness** — no date on timestamps (wraps at 24h); no device model; external-storage export.
 
 ## Tier 3 — Low
 
@@ -42,6 +42,13 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#23 Log export usefulness** — substantially delivered in #5: log timestamps now carry a date
+  (MM-dd HH:mm:ss.SSS, no more 24h wrap) and the export prepends a device/OS/ABI header, so a
+  user-sent log identifies which Fire TV produced it and events order correctly. The export stays
+  in getExternalFilesDir because that is the only location a user can retrieve with adb pull on a
+  release build; on API 19+ (every Fire TV) that directory is app-specific, and the file only
+  exists when the user explicitly exports.
 
 - **#22 Update hygiene** — CI now fails a tagged release when the tag (e.g. v0.2.0) does not match
   the app versionName in build.gradle.kts, so a release can no longer ship an APK whose reported
