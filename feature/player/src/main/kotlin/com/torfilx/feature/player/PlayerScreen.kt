@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -560,6 +563,12 @@ private fun ScrubBar(
             .background(TorfilxColors.ProgressTrack)
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
+            // Announce the seek bar and position for VoiceView; left/right scrub when focused.
+            .semantics {
+                contentDescription = "Seek bar"
+                stateDescription =
+                    "${Format.timecode(positionMs)} of ${Format.timecode(durationMs)}"
+            }
             .focusable()
             .onRemoteKey { key, isKeyDown, _ ->
                 if (!isKeyDown) return@onRemoteKey false

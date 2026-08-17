@@ -166,6 +166,11 @@ fun SearchField(
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
             .background(TorfilxColors.SurfaceLow)
+            // Announce it as the search field and read back the current query for VoiceView, which
+            // otherwise sees only a static Text.
+            .semantics {
+                contentDescription = if (value.isEmpty()) placeholder else "Search: $value"
+            }
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(

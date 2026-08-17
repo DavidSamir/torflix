@@ -25,6 +25,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -152,6 +153,11 @@ fun TvChip(
                 shape = RoundedCornerShape(20.dp),
             )
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            // So VoiceView announces the on/off or selected state, not just the label.
+            .semantics {
+                this.selected = selected
+                this.role = Role.Tab
+            }
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Text(
