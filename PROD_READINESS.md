@@ -26,7 +26,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 - [x] **15. R8 fully off** — bloat, no obfuscation, dead proguard rules, false comment.
 - [x] **16. DataStore corruption handler** — a corrupt settings file breaks all writes permanently.
-- [ ] **17. Catalog parse resilience** — one bad byte empties the whole catalog; non-streaming decode on a low-RAM stick.
+- [x] **17. Catalog parse resilience** — one bad byte empties the whole catalog; non-streaming decode on a low-RAM stick.
 - [ ] **18. Accessibility** — chips/toggles/scrubber/search unlabeled for VoiceView.
 - [ ] **19. Wire `NetworkMonitor`** — no offline affordance, no mid-stream recovery; remove dead banners.
 - [ ] **20. Engine efficiency** — uncapped upload, RAF-per-chunk, metadata busy-poll.
@@ -42,6 +42,14 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#17 Catalog parse resilience** — switched from reading the whole 2 MB file into a string + full
+  DTO list to a streaming decodeToSequence that maps each entry as it arrives (lower peak memory on
+  a ~128 MB heap). Crucially it is resilient: a malformed entry is skipped individually, and a JSON
+  syntax error mid-stream keeps every entry parsed before it instead of collapsing the whole
+  catalogue to empty. Added tests for partial-on-syntax-error and one that parses the actual shipped
+  catalog.json (8 total, incl. real file), so a broken hand edit fails CI rather than showing an
+  empty home screen on the stick.
 
 - **#16 DataStore corruption handler** — a corrupt settings file threw on every read (caught, falls
   back to defaults) but also on every write (not caught), so a one-time corruption locked the user

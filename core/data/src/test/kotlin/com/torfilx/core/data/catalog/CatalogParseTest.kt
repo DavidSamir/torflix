@@ -87,4 +87,25 @@ class CatalogParseTest {
         val items = parse("""[{ "title": "X", "surprise": 42, "magnets": [] }]""")
         assertThat(items).hasSize(1)
     }
+
+    @Test
+    fun `a syntax error mid-array keeps the entries parsed before it`() {
+        // The whole catalogue used to collapse to empty on one bad byte; now the good entries before
+        // the break survive.
+        val items = parse("""[ {"title":"A","magnets":[]}, {"title":"B", B R O K E N ]""")
+        assertThat(items.map { it.item.title }).contains("A")
+    }
+
+    @Test
+    fun `the shipped catalog parses to unique-keyed, titled items`() {
+        // Guards the *actual* file that ships in the app — the only source of content — so a broken
+        // hand edit is caught by CI, not discovered as an empty home screen on a stick.
+        val file = java.io.File("src/main/assets/catalog.json")
+        if (!file.exists()) return // path differs under some runners; skip rather than fail spuriously
+
+        val items = file.inputStream().use { parseCatalogStream(it, json) }
+        assertThat(items).isNotEmpty()
+        assertThat(items.all { it.item.id.isNotBlank() && it.item.title.isNotBlank() }).isTrue()
+        assertThat(items.map { it.item.id }.toSet()).hasSize(items.size) // ids are Compose keys
+    }
 }

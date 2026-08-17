@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeToSequence
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -124,8 +125,7 @@ class BundledCatalog @Inject constructor(
     }
 
     private fun load(): List<CatalogItem> = runCatching {
-        val raw = context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
-        parseCatalog(raw, json)
+        context.assets.open(ASSET_NAME).use { parseCatalogStream(it, json) }
     }.getOrElse { error ->
         TorfilxLog.e(TAG, "Bundled catalogue could not be read", error)
         emptyList()
@@ -133,77 +133,101 @@ class BundledCatalog @Inject constructor(
 }
 
 /**
- * Parses the catalogue JSON into validated items. Pure (no `Context`), so the *real* parser — magnet
- * validation, id de-duplication, genre normalisation, year/quality parsing — is unit-tested against
- * real JSON rather than a re-implementation of the same rules.
+ * Streams the catalogue JSON array, mapping and validating each entry as it arrives.
+ *
+ * Streaming rather than reading the whole 2 MB file into a string plus a full DTO list keeps peak
+ * memory low on a ~128 MB-heap stick. It is also far more resilient: a malformed entry is skipped
+ * individually, and if a JSON syntax error stops the stream part-way, the entries parsed *before* it
+ * are kept — a hand-edited catalogue with one broken line loses that line, not the whole library,
+ * which used to collapse to an empty catalogue.
  */
-internal fun parseCatalog(raw: String, json: Json): List<CatalogItem> {
-    val entries = json.decodeFromString<List<CatalogEntryDto>>(raw)
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+internal fun parseCatalogStream(stream: java.io.InputStream, json: Json): List<CatalogItem> {
+    val usedIds = HashSet<String>()
+    val items = ArrayList<CatalogItem>()
+    var index = 0
+    try {
+        json.decodeToSequence<CatalogEntryDto>(stream).forEach { entry ->
+            runCatching { mapCatalogEntry(entry, index, usedIds) }
+                .onFailure { TorfilxLog.w(TAG, "Catalogue entry $index skipped: ${it.message}") }
+                .getOrNull()
+                ?.let { items.add(it) }
+            index++
+        }
+    } catch (error: Throwable) {
+        // A JSON syntax error mid-stream: keep everything parsed so far instead of losing it all.
+        TorfilxLog.w(TAG, "Catalogue parse stopped after $index entries: ${error.message}")
+    }
+    TorfilxLog.i(TAG, "Bundled catalogue: ${items.size} titles")
+    return items
+}
 
-    val usedIds = HashSet<String>(entries.size)
+/** Convenience for tests: parse a JSON string with the same resilient streaming path. */
+internal fun parseCatalog(raw: String, json: Json): List<CatalogItem> =
+    parseCatalogStream(raw.byteInputStream(), json)
 
-    return entries.mapIndexedNotNull { index, entry ->
-            val title = entry.title.trim()
-            if (title.isEmpty()) {
-                TorfilxLog.w(TAG, "Catalogue entry $index has no title; skipped")
-                return@mapIndexedNotNull null
-            }
+/** Maps one decoded entry to a validated item, or null when it has no usable title. */
+private fun mapCatalogEntry(
+    entry: CatalogEntryDto,
+    index: Int,
+    usedIds: MutableSet<String>,
+): CatalogItem? {
+    val title = entry.title.trim()
+    if (title.isEmpty()) {
+        TorfilxLog.w(TAG, "Catalogue entry $index has no title; skipped")
+        return null
+    }
 
-            val sources = entry.magnets.mapIndexedNotNull { magnetIndex, magnet ->
-                val infoHash = com.torfilx.core.torrent.MagnetLink.infoHashOf(magnet.magnet)
-                if (infoHash == null) {
-                    TorfilxLog.w(TAG, "\"$title\": magnet ${magnetIndex + 1} is malformed; skipped")
-                    return@mapIndexedNotNull null
-                }
-                val quality = magnet.quality?.trim().orEmpty()
-                MediaSource(
-                    id = "torrent-$infoHash",
-                    kind = SourceKind.TORRENT,
-                    url = magnet.magnet,
-                    magnetUri = magnet.magnet,
-                    label = if (quality.isEmpty()) "Torrent" else "Torrent · $quality",
-                    videoCodec = null,
-                    height = quality.qualityHeight(),
-                    hdr = HdrType.NONE,
-                )
-            }
+    val sources = entry.magnets.mapIndexedNotNull { magnetIndex, magnet ->
+        val infoHash = com.torfilx.core.torrent.MagnetLink.infoHashOf(magnet.magnet)
+        if (infoHash == null) {
+            TorfilxLog.w(TAG, "\"$title\": magnet ${magnetIndex + 1} is malformed; skipped")
+            return@mapIndexedNotNull null
+        }
+        val quality = magnet.quality?.trim().orEmpty()
+        MediaSource(
+            id = "torrent-$infoHash",
+            kind = SourceKind.TORRENT,
+            url = magnet.magnet,
+            magnetUri = magnet.magnet,
+            label = if (quality.isEmpty()) "Torrent" else "Torrent · $quality",
+            videoCodec = null,
+            height = quality.qualityHeight(),
+            hdr = HdrType.NONE,
+        )
+    }
 
-            // Ids must be unique: they are Compose list keys, and a duplicate key crashes the row.
-            // Two entries can legitimately share a title and year (a re-release, a duplicate line in a
-            // hand-edited file), so collisions are disambiguated by info hash, then by position.
-            val baseId = "catalog-${title.slug()}-${entry.year.orEmpty()}"
-            val id = when {
-                usedIds.add(baseId) -> baseId
-                else -> {
-                    val hashSuffix = sources.firstOrNull()?.id?.removePrefix("torrent-")?.take(8)
-                    val candidate = if (hashSuffix != null) "$baseId-$hashSuffix" else "$baseId-$index"
-                    if (usedIds.add(candidate)) {
-                        candidate
-                    } else {
-                        "$baseId-$index".also { usedIds.add(it) }
-                    }
-                }
-            }
-            CatalogItem(
-                item = MediaItem(
-                    id = id,
-                                    title = title,
-                    sortTitle = title.removePrefix("The ").trim(),
-                    year = entry.year?.filter { it.isDigit() }?.toIntOrNull(),
-                    runtimeMs = entry.runtimeMinutes?.let { it * 60_000L },
-                    overview = entry.overview,
-                    // A repeated genre would put the same film twice in one row, and a duplicate key
-                    // inside a lazy list is a hard crash — so genres are normalised here, once.
-                    genres = entry.genres
-                        .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
-                        .distinctBy { it.lowercase() },
-                    images = Images(poster = entry.imageUrl, backdrop = entry.imageUrl),
-                    addedAtMs = null,
-                    updatedAtMs = 0L,
-                ),
-                sources = sources,
-            )
-        }.also { TorfilxLog.i(TAG, "Bundled catalogue: ${it.size} titles") }
+    // Ids must be unique: they are Compose list keys, and a duplicate key crashes the row. Two
+    // entries can legitimately share a title and year (a re-release, a duplicate line in a
+    // hand-edited file), so collisions are disambiguated by info hash, then by position.
+    val baseId = "catalog-${title.slug()}-${entry.year.orEmpty()}"
+    val id = when {
+        usedIds.add(baseId) -> baseId
+        else -> {
+            val hashSuffix = sources.firstOrNull()?.id?.removePrefix("torrent-")?.take(8)
+            val candidate = if (hashSuffix != null) "$baseId-$hashSuffix" else "$baseId-$index"
+            if (usedIds.add(candidate)) candidate else "$baseId-$index".also { usedIds.add(it) }
+        }
+    }
+    return CatalogItem(
+        item = MediaItem(
+            id = id,
+            title = title,
+            sortTitle = title.removePrefix("The ").trim(),
+            year = entry.year?.filter { it.isDigit() }?.toIntOrNull(),
+            runtimeMs = entry.runtimeMinutes?.let { it * 60_000L },
+            overview = entry.overview,
+            // A repeated genre would put the same film twice in one row, and a duplicate key inside a
+            // lazy list is a hard crash — so genres are normalised here, once.
+            genres = entry.genres
+                .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+                .distinctBy { it.lowercase() },
+            images = Images(poster = entry.imageUrl, backdrop = entry.imageUrl),
+            addedAtMs = null,
+            updatedAtMs = 0L,
+        ),
+        sources = sources,
+    )
 }
 
 private fun String.slug(): String = lowercase()
