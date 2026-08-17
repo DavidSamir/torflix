@@ -75,7 +75,13 @@ android {
         warningsAsErrors = true
         abortOnError = true
         checkDependencies = true
-        disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ObsoleteLintCustomCheck")
+        // ChromeOsAbiSupport wants an x86_64 ABI so the app runs on ChromeOS; this is a Fire TV app
+        // (32-bit ARM only), and shipping x86 is exactly the bloat #15 removed, so the check does
+        // not apply.
+        disable += setOf(
+            "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion",
+            "ObsoleteLintCustomCheck", "ChromeOsAbiSupport",
+        )
         baseline = file("lint-baseline.xml")
     }
 }
