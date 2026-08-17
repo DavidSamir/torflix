@@ -8,7 +8,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **2. Stream-server correctness** — 64 KB reads cross piece boundaries into not-yet-downloaded data (zero-fill corruption); a stalled swarm truncates the HTTP body under a declared Content-Length.
 - [x] **3. Uncaught exceptions on the play path** — `open()`/`retry()` only catch `TorrentError`/`DataError`; anything else crashes the app.
 - [x] **4. Storage safety** — active download never capped (disk fills), orphaned data can't be evicted after restart, "Clear data" doesn't delete files. `NoSpace` never thrown.
-- [ ] **5. Field failure visibility** — no remote crash/error capture, and the in-memory crash log is destroyed when CrashGuard restarts the process.
+- [x] **5. Field failure visibility** — no remote crash/error capture, and the in-memory crash log is destroyed when CrashGuard restarts the process. _(Durable on-disk crash reports + export; true auto-telemetry needs a backend and is out of scope without one.)_
 - [ ] **6. Localization / RTL** — all strings hardcoded; `values-he` untranslated; decide in (externalize + translate + RTL) or out (drop the `he` config).
 
 ## Tier 1 — High
@@ -42,6 +42,16 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#5 Field failure visibility** — added `CrashStore`: the crash guard now writes each uncaught
+  exception (with device, OS, app version, thread and full stack) to app-private disk, so it
+  survives the process kill that wipes the in-memory buffer. Settings → Export logs prepends a
+  device header and the durable crash reports, so a user-sent export actually contains the crash.
+  The guard also abandons restarting after 5 consecutive crashes (a slow, steady loop), not only a
+  fast <10 s loop, with a stability reset once the app has run 2 min cleanly. Log timestamps now
+  carry a date (no more 24 h wrap), and the export write moved off the main thread. True automatic
+  remote telemetry still needs a backend to receive it, which is out of scope for a sideloaded app
+  without one — the durable, exportable report is the realistic substitute.
 
 - **#4 Storage safety** — "Clear downloaded data" now stops the session and actually deletes the
   files (`purgeAllData`), instead of a budget check that usually did nothing; un-resumable orphan

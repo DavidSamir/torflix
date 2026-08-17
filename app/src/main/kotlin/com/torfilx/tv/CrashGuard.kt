@@ -2,6 +2,7 @@ package com.torfilx.tv
 
 import android.app.Application
 import android.content.Intent
+import com.torfilx.core.common.log.CrashStore
 import com.torfilx.core.common.log.TorfilxLog
 import kotlin.system.exitProcess
 
@@ -11,31 +12,41 @@ private const val TAG = "CrashGuard"
  * Last line of defence against Android's "TORFILX keeps stopping" dialog.
  *
  * On a TV that dialog is a dead end: there is no notification shade, no way to report it, and the
- * remote's only useful button is the one that closes the app. So an uncaught exception is logged
- * (the log survives in the in-memory buffer and can be exported from Settings) and the app restarts
- * itself at Home instead of dying in front of the viewer.
+ * remote's only useful button is the one that closes the app. So an uncaught exception is recorded
+ * — durably, via [CrashStore], because the in-memory log does not survive the process being killed —
+ * and the app restarts itself at Home instead of dying in front of the viewer.
  *
- * A restart loop would be worse than a crash dialog, so a second crash within [RESTART_WINDOW_MS]
- * hands control back to the platform handler.
+ * A restart loop is worse than a crash dialog, so restarting is abandoned when a crash recurs
+ * within [RESTART_WINDOW_MS] (a fast loop) or after [MAX_CONSECUTIVE_CRASHES] crashes without the
+ * app ever staying up long enough to be declared stable (a slow, steady loop). The consecutive
+ * counter is reset from the UI once the app has run cleanly for [STABILITY_MS] (see MainActivity).
  */
-internal fun Application.installCrashGuard() {
+internal fun Application.installCrashGuard(crashStore: CrashStore) {
     val platformHandler = Thread.getDefaultUncaughtExceptionHandler()
 
     Thread.setDefaultUncaughtExceptionHandler { thread, error ->
         val now = System.currentTimeMillis()
-        val lastCrashAt = crashPrefs().getLong(KEY_LAST_CRASH_AT, 0L)
-        val isRepeatCrash = now - lastCrashAt < RESTART_WINDOW_MS
+        val prefs = crashPrefs()
+        val lastCrashAt = prefs.getLong(KEY_LAST_CRASH_AT, 0L)
+        val consecutive = prefs.getInt(KEY_CONSECUTIVE, 0) + 1
+        val fastLoop = now - lastCrashAt < RESTART_WINDOW_MS
+        val steadyLoop = consecutive >= MAX_CONSECUTIVE_CRASHES
+        val giveUp = fastLoop || steadyLoop
 
         runCatching {
-            TorfilxLog.e(TAG, "Uncaught exception on ${thread.name} (repeat=$isRepeatCrash)", error)
+            crashStore.record(thread.name, error)
+            TorfilxLog.e(TAG, "Uncaught exception on ${thread.name} (#$consecutive, giveUp=$giveUp)", error)
             // commit(), not apply(): the process is killed a few lines below, and an asynchronous
-            // write never lands — which makes every crash look like the first one and turns the
+            // write never lands — which would make every crash look like the first and turn the
             // restart into an endless loop (the app flickering once a second on the TV).
-            crashPrefs().edit().putLong(KEY_LAST_CRASH_AT, now).commit()
+            prefs.edit()
+                .putLong(KEY_LAST_CRASH_AT, now)
+                .putInt(KEY_CONSECUTIVE, consecutive)
+                .commit()
         }
 
-        if (isRepeatCrash) {
-            // Crashing again straight after a restart means restarting will not help.
+        if (giveUp) {
+            // Restarting will not help; let the platform show its dialog rather than loop forever.
             platformHandler?.uncaughtException(thread, error)
             return@setDefaultUncaughtExceptionHandler
         }
@@ -58,9 +69,17 @@ internal fun Application.installCrashGuard() {
     }
 }
 
+/** Called once the app has run cleanly for a while, so a past crash streak no longer counts. */
+internal fun Application.markRunStable() {
+    runCatching { crashPrefs().edit().putInt(KEY_CONSECUTIVE, 0).commit() }
+}
+
 private fun Application.crashPrefs() =
     getSharedPreferences("torfilx_crash", android.content.Context.MODE_PRIVATE)
 
 private const val KEY_LAST_CRASH_AT = "last_crash_at"
+private const val KEY_CONSECUTIVE = "consecutive_crashes"
 private const val RESTART_WINDOW_MS = 10_000L
+private const val MAX_CONSECUTIVE_CRASHES = 5
+internal const val STABILITY_MS = 120_000L
 private const val EXIT_CODE = 10

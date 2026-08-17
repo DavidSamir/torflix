@@ -3,7 +3,6 @@ package com.torfilx.core.common.log
 import android.util.Log
 import java.util.ArrayDeque
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 /**
  * Logging with a bounded in-memory ring buffer.
@@ -80,12 +79,10 @@ object TorfilxLog {
         else -> '?'
     }
 
-    private fun formatTimestamp(ms: Long): String {
-        val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(ms)
-        val hours = (totalSeconds / 3600) % 24
-        val minutes = (totalSeconds / 60) % 60
-        val seconds = totalSeconds % 60
-        val millis = ms % 1000
-        return String.format(Locale.US, "%02d:%02d:%02d.%03d", hours, minutes, seconds, millis)
-    }
+    // A full date, not just time-of-day: a log kept over a session used to wrap at 24 h, so events
+    // could not be ordered across a day boundary and a crash could not be dated.
+    private val timestampFormat = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
+
+    private fun formatTimestamp(ms: Long): String =
+        synchronized(timestampFormat) { timestampFormat.format(java.util.Date(ms)) }
 }

@@ -45,14 +45,24 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
+    @Inject
+    lateinit var crashStore: com.torfilx.core.common.log.CrashStore
+
     override fun onCreate() {
         super.onCreate()
         TorfilxLog.debugEnabled = BuildConfig.DEBUG
         TorfilxLog.i(TAG, "TORFILX ${BuildConfig.VERSION_NAME} starting")
 
         // Installed first: a failure anywhere after this point restarts the app instead of showing
-        // the system.s "keeps stopping" dialog on the TV.
-        installCrashGuard()
+        // the system.s "keeps stopping" dialog on the TV, and is recorded durably for the log export.
+        installCrashGuard(crashStore)
+
+        // If the app runs cleanly for a while, a past crash streak no longer counts against the
+        // restart-loop guard.
+        applicationScope.launch {
+            kotlinx.coroutines.delay(STABILITY_MS)
+            markRunStable()
+        }
 
         // Parse and index the catalogue before the first screen asks for it, off the main thread:
         // with a few thousand entries this is tens of milliseconds that must not land on a frame.

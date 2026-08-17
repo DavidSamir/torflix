@@ -19,7 +19,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -47,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val mediaRepository: MediaRepository,
     private val torrentCoordinator: TorrentCoordinator,
+    private val crashStore: com.torfilx.core.common.log.CrashStore,
 ) : ViewModel() {
 
     private val message = MutableStateFlow<String?>(null)
@@ -142,18 +145,44 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Writes the in-memory log ring buffer to a file the user can pull with adb. */
+    /**
+     * Writes the log buffer plus any durable crash reports to a file the user can pull with adb.
+     *
+     * The crash reports are the point: the in-memory buffer is destroyed when the crash guard kills
+     * the process, so without them a crash export would contain everything except the crash. A
+     * device/OS/app header is prepended so a user-sent log identifies which Fire TV produced it.
+     */
     fun exportLogs() {
         viewModelScope.launch {
-            message.value = runCatching {
-                val file = File(context.getExternalFilesDir(null) ?: context.filesDir, "torfilx-log.txt")
-                file.writeText(TorfilxLog.dump())
-                "Logs written to ${file.absolutePath}"
-            }.getOrElse {
-                TorfilxLog.w(TAG, "Log export failed", it)
-                "Could not write logs: ${it.message}"
+            message.value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File(context.getExternalFilesDir(null) ?: context.filesDir, "torfilx-log.txt")
+                    file.writeText(buildLogExport())
+                    "Logs written to ${file.absolutePath}"
+                }.getOrElse {
+                    TorfilxLog.w(TAG, "Log export failed", it)
+                    "Could not write logs: ${it.message}"
+                }
             }
         }
+    }
+
+    private fun buildLogExport(): String = buildString {
+        appendLine("TORFILX log export")
+        appendLine(
+            "device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · " +
+                "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · " +
+                "abi ${android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "?"}",
+        )
+        appendLine()
+        val crashes = crashStore.readAll()
+        if (crashes.isNotBlank()) {
+            appendLine("---- crash reports (newest first) ----")
+            appendLine(crashes)
+            appendLine()
+        }
+        appendLine("---- log ----")
+        append(TorfilxLog.dump())
     }
 
     fun dismissMessage() {
