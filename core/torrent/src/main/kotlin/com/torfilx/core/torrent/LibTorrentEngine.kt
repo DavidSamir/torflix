@@ -119,6 +119,20 @@ class LibTorrentEngine @Inject constructor(
                 setBoolean(settings_pack.bool_types.enable_dht.swigValue(), true)
                 setBoolean(settings_pack.bool_types.enable_lsd.swigValue(), true)
                 setString(settings_pack.string_types.user_agent.swigValue(), USER_AGENT)
+
+                // Spelled out rather than left to the library's defaults. This pack is handed
+                // straight to SessionParams, which takes it as the whole configuration — so an
+                // entry we do not set is empty, not defaulted. With no bootstrap routers the DHT
+                // never joins, no peers are ever found, and every magnet dies on "no peers
+                // responded with torrent details" no matter how long the timeout is.
+                setString(
+                    settings_pack.string_types.dht_bootstrap_nodes.swigValue(),
+                    DHT_BOOTSTRAP_NODES,
+                )
+                setString(
+                    settings_pack.string_types.listen_interfaces.swigValue(),
+                    LISTEN_INTERFACES,
+                )
                 // Upload is only allowed once the user has consented to sharing.
                 setInteger(
                     settings_pack.int_types.upload_rate_limit.swigValue(),
@@ -127,6 +141,27 @@ class LibTorrentEngine @Inject constructor(
             }
 
             runCatching { session.start(SessionParams(settings)) }
+
+            // Starting the session does not necessarily start the DHT: enable_dht in the settings
+            // pack is a preference, not an instruction, and without the DHT a magnet has only its
+            // trackers to go on — which is why every title failed with "no peers responded".
+            runCatching {
+                if (!session.isDhtRunning()) {
+                    session.startDht()
+                    TorfilxLog.i(TAG, "DHT was not running; started it explicitly")
+                }
+            }.onFailure { TorfilxLog.w(TAG, "Could not start the DHT", it) }
+
+            // Give the routing table a moment to fill. Announcing to an empty DHT finds nobody, and
+            // the node count is the one number that says whether we are actually on the network.
+            runCatching {
+                var waited = 0L
+                while (session.dhtNodes() <= 0 && waited < DHT_BOOTSTRAP_WAIT_MS) {
+                    delay(DHT_POLL_INTERVAL_MS)
+                    waited += DHT_POLL_INTERVAL_MS
+                }
+                TorfilxLog.i(TAG, "DHT nodes after ${waited}ms: ${session.dhtNodes()}")
+            }
                 .onFailure { throw TorrentError.EngineUnavailable(it) }
 
             started = true
@@ -164,13 +199,26 @@ class LibTorrentEngine @Inject constructor(
 
         session.download(magnet, downloadDir)
 
+        // libtorrent4j 1.2's download() strips AUTO_MANAGED from the add-torrent flags but leaves
+        // libtorrent's default PAUSED flag in place — and the auto-manager is the only thing that
+        // would ever un-pause it. Left alone, the torrent never announces, so no peer ever sends
+        // metadata and every title dies with "no peers responded". (2.x keeps AUTO_MANAGED, which
+        // is why the same code worked there.) libtorrent4j's own fetchMagnet() resumes for exactly
+        // this reason; so do we, the moment the handle exists.
+        var resumed = false
+
         // Metadata arrives from peers; without it there is nothing to prioritise or serve.
         val handle = withTimeoutOrNull(METADATA_TIMEOUT_MS) {
             var found: TorrentHandle? = null
             while (found == null) {
                 val candidate = session.find(infoHash.toSha1Hash())
-                if (candidate != null && candidate.isValid && candidate.torrentFile() != null) {
-                    found = candidate
+                if (candidate != null && candidate.isValid) {
+                    if (!resumed) {
+                        runCatching { candidate.resume() }
+                        resumed = true
+                        TorfilxLog.i(TAG, "Torrent added and resumed; waiting for metadata")
+                    }
+                    if (candidate.torrentFile() != null) found = candidate
                 }
                 delay(POLL_INTERVAL_MS)
             }
@@ -380,6 +428,18 @@ class LibTorrentEngine @Inject constructor(
         const val CONNECTION_LIMIT = 120
         const val ALERT_QUEUE_SIZE = 2_000
         const val USER_AGENT = "Torfilx/1.0 libtorrent/2.x"
+        /** How long to let the DHT routing table fill before asking it for peers. */
+        const val DHT_BOOTSTRAP_WAIT_MS = 20_000L
+        const val DHT_POLL_INTERVAL_MS = 1_000L
+
+        /** The public DHT routers a client bootstraps from; without these the DHT never joins. */
+        const val DHT_BOOTSTRAP_NODES =
+            "router.bittorrent.com:6881,dht.transmissionbt.com:6881," +
+                "router.utorrent.com:6881,dht.libtorrent.org:25401"
+
+        /** Listen on every interface, IPv4 and IPv6. */
+        const val LISTEN_INTERFACES = "0.0.0.0:6881,[::]:6881"
+
         /**
          * How long to wait for peers to send the torrent details.
          *
