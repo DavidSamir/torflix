@@ -7,7 +7,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **1. Release signing stability** — a missing CI keystore silently falls back to a fresh debug key, breaking in-place upgrades. Guard tagged releases; document the keystore.
 - [x] **2. Stream-server correctness** — 64 KB reads cross piece boundaries into not-yet-downloaded data (zero-fill corruption); a stalled swarm truncates the HTTP body under a declared Content-Length.
 - [x] **3. Uncaught exceptions on the play path** — `open()`/`retry()` only catch `TorrentError`/`DataError`; anything else crashes the app.
-- [ ] **4. Storage safety** — active download never capped (disk fills), orphaned data can't be evicted after restart, "Clear data" doesn't delete files. `NoSpace` never thrown.
+- [x] **4. Storage safety** — active download never capped (disk fills), orphaned data can't be evicted after restart, "Clear data" doesn't delete files. `NoSpace` never thrown.
 - [ ] **5. Field failure visibility** — no remote crash/error capture, and the in-memory crash log is destroyed when CrashGuard restarts the process.
 - [ ] **6. Localization / RTL** — all strings hardcoded; `values-he` untranslated; decide in (externalize + translate + RTL) or out (drop the `he` config).
 
@@ -42,6 +42,13 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#4 Storage safety** — "Clear downloaded data" now stops the session and actually deletes the
+  files (`purgeAllData`), instead of a budget check that usually did nothing; un-resumable orphan
+  data is purged on every cold start so dead downloads can't accumulate across restarts; `stream()`
+  throws `NoSpace` when free space is already below the 500 MB reserve; and the status poller stops
+  all downloads if free space dips below the reserve floor, so a single large title can't march the
+  disk to zero and wedge the device.
 
 - **#3 Uncaught exceptions on the play path** — `open()` now wraps its body so any unforeseen
   throwable (e.g. a port-bind `IOException`) becomes a retryable on-screen error instead of an

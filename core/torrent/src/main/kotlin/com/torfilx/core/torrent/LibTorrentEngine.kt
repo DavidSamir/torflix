@@ -161,6 +161,11 @@ class LibTorrentEngine @Inject constructor(
             }.onFailure { TorfilxLog.w(TAG, "Could not toggle the DHT (continuing on trackers)", it) }
 
             started = true
+            // No resume data is kept, so anything already on disk at this (cold) start is an orphan
+            // that can never be resumed — only dead weight that would accumulate and fill the disk
+            // across restarts. Reclaim it before adding anything new. managedTorrents is always
+            // empty here because start()'s body only runs when the session is not already up.
+            purgeOrphanedData()
             // Binding the loopback socket can fail on a locked-down device; surface it as a typed
             // error the player screen can show, not a raw IOException that crashes the play coroutine.
             runCatching { streamServer.start() }
@@ -192,6 +197,14 @@ class LibTorrentEngine @Inject constructor(
 
         start()
         enforceStorageBudget()
+
+        // Refuse to start a download on a critically low disk. A positive reading below the reserve
+        // floor means there is not enough headroom to buffer without wedging the device; 0 means the
+        // stat failed, so we do not block on it.
+        val freeAtStart = freeSpaceBytes()
+        if (freeAtStart in 1 until storageBudget.reserveBytes) {
+            throw TorrentError.NoSpace(needed = storageBudget.reserveBytes, available = freeAtStart)
+        }
 
         managedTorrents[infoHash]?.let { existing ->
             // Already in the session (possibly seeding): resume streaming from it rather than
@@ -371,9 +384,56 @@ class LibTorrentEngine @Inject constructor(
                 snapshot.forEach { lastTouched.putIfAbsent(it.infoHash, System.currentTimeMillis()) }
                 managedTorrents.values.filter { it.isStreaming }
                     .forEach { lastTouched[it.infoHash] = System.currentTimeMillis() }
+                runCatching { guardFreeSpace() }
                 delay(STATUS_POLL_MS)
             }
         }
+    }
+
+    /**
+     * Keeps the device's disk headroom above the reserve floor.
+     *
+     * A single large title downloads sequentially and there is no way to drop already-downloaded
+     * pieces of the active torrent, so it can march the disk toward zero on its own. When free space
+     * dips below the reserve, evict what can be evicted; if that is not enough, pause everything so
+     * the disk keeps its headroom. Playback then stalls with an error, which is far better than
+     * filling internal storage and wedging the whole TV.
+     */
+    private suspend fun guardFreeSpace() {
+        val reserve = storageBudget.reserveBytes
+        if (freeSpaceBytes().let { it in 1 until reserve }) {
+            enforceStorageBudget()
+            if (freeSpaceBytes().let { it in 1 until reserve }) {
+                managedTorrents.values.forEach { runCatching { it.handle.pause() } }
+                TorfilxLog.w(
+                    TAG,
+                    "Free space below the ${reserve / 1_000_000} MB reserve; paused downloads to " +
+                        "protect the device",
+                )
+            }
+        }
+    }
+
+    /** Deletes leftover on-disk data that no longer belongs to any managed torrent. */
+    private fun purgeOrphanedData() {
+        runCatching {
+            val entries = downloadDir.listFiles()?.takeIf { it.isNotEmpty() } ?: return
+            val freed = directorySize(downloadDir)
+            entries.forEach { it.deleteRecursively() }
+            TorfilxLog.i(TAG, "Purged ${freed / 1_000_000} MB of orphaned torrent data on start")
+        }.onFailure { TorfilxLog.w(TAG, "Could not purge orphaned torrent data", it) }
+    }
+
+    override suspend fun purgeAllData() = withContext(ioDispatcher) {
+        // Stop the session first so nothing is writing while the files are deleted, then remove the
+        // data directly rather than relying on libtorrent's asynchronous delete.
+        stop()
+        val freed = directorySize(downloadDir)
+        runCatching { downloadDir.listFiles()?.forEach { it.deleteRecursively() } }
+            .onFailure { TorfilxLog.w(TAG, "Could not delete downloaded data", it) }
+        _torrents.value = emptyList()
+        lastTouched.clear()
+        TorfilxLog.i(TAG, "Cleared ${freed / 1_000_000} MB of downloaded data")
     }
 
     private fun collectStatuses(): List<TorrentStatus> = managedTorrents.values.mapNotNull { streamed ->

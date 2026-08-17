@@ -42,6 +42,9 @@ interface TorrentEngine {
     /** Frees disk until usage is within the budget, oldest-touched torrents first. */
     suspend fun enforceStorageBudget()
 
+    /** Stops the session and deletes every downloaded byte from disk. */
+    suspend fun purgeAllData()
+
     /** True when the native library actually loaded on this device. */
     fun isAvailable(): Boolean
 }

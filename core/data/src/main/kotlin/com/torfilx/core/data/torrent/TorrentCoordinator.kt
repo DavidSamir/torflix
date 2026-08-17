@@ -91,10 +91,9 @@ class TorrentCoordinator @Inject constructor(
         }
     }
 
-    /** Removes every torrent and its data; watch history is untouched. */
+    /** Deletes every downloaded byte from disk; watch history and My List are untouched. */
     suspend fun clearAllData() {
-        engine.stop()
-        engine.enforceStorageBudget()
+        engine.purgeAllData()
     }
 
     suspend fun shutdown() = engine.stop()
