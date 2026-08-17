@@ -43,6 +43,12 @@ class MainActivity : ComponentActivity() {
     @com.torfilx.core.common.di.ApplicationScope
     lateinit var applicationScope: kotlinx.coroutines.CoroutineScope
 
+    private val notificationPermission =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {
+            // Result ignored: without it the media notification is merely hidden; the foreground
+            // service and playback still run.
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -54,6 +60,22 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        requestNotificationPermissionIfNeeded()
+    }
+
+    /**
+     * Media3 promotes the playback service to the foreground and posts the media notification on its
+     * own. From Android 13 (API 33) that notification also needs the POST_NOTIFICATIONS runtime
+     * grant to be visible — no current Fire TV runs API 33, but targetSdk is 34, so request it where
+     * it applies. It is best-effort: denial only hides the notification, it does not stop playback.
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        val granted = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            runCatching { notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+        }
     }
 
     override fun onStart() {

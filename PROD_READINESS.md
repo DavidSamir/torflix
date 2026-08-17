@@ -14,7 +14,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 ## Tier 1 — High
 
 - [x] **7. Seeding/privacy** — session never stopped on normal exit; seeding continues with no indicator; no VPN/kill-switch; watching requires uploading. _(Session now stops on app exit; VPN kill-switch and the watch-requires-upload coupling remain as design decisions — see done log.)_
-- [ ] **8. Foreground service** — started with `startService`; no notification channel; `POST_NOTIFICATIONS` never requested → FGS crash risk on Android 12/13.
+- [x] **8. Foreground service** — started with `startService`; no notification channel; `POST_NOTIFICATIONS` never requested → FGS crash risk on Android 12/13. _(Mostly already correct: Media3 self-promotes and creates the channel; added the API-33+ runtime permission request. No current Fire TV is API 33.)_
 - [ ] **9. Data loss on reinstall** — progress / My List / settings are local-only with `allowBackup=false` and no export.
 - [ ] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
 - [ ] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
@@ -42,6 +42,15 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#8 Foreground service** — investigated against the Android docs: a Media3 `MediaSessionService`
+  promotes itself to the foreground and posts the `MediaStyle` notification automatically when the
+  player has items, and creates its own notification channel, so `startService` from the foreground
+  activity is correct and there is no `startForeground`-timeout exposure. The manifest already
+  declares `foregroundServiceType="mediaPlayback"` and the right permissions. The one real gap was
+  the API-33+ `POST_NOTIFICATIONS` runtime grant (needed only for the notification to be *visible*);
+  added a guarded, best-effort request. No current Fire TV runs API 33, but targetSdk is 34 so it is
+  future-proofed. The audit's "HIGH" was a generic-Android concern that mostly did not apply here.
 
 - **#6 Localization** — decided English-only. Removed the unused Hebrew resource config
   (`resourceConfigurations` is now just `en`), deleted the empty `values-he` folder (which also
