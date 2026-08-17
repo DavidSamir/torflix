@@ -19,7 +19,7 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 - [x] **10. `lastTouched` data race** — plain HashMap read/written from two dispatchers.
 - [x] **11. Room migration trap** — no migrations, no migration test; first schema bump crash-loops.
 - [x] **12. CI quality gate dead** — lint never runs in CI; baseline hides a fatal `Instantiatable`.
-- [ ] **13. Player focus loss** — focus can be stranded after controls auto-hide.
+- [x] **13. Player focus loss** — focus can be stranded after controls auto-hide.
 - [ ] **14. No tests on riskiest code** — torrent engine, stream server, playback controller, real catalog parser.
 
 ## Tier 2 — Medium
@@ -42,6 +42,11 @@ Worked top to bottom. Each item is committed on its own. `[x]` = done, `[ ]` = p
 
 ### Done log
 _(most recent first)_
+
+- **#13 Player focus loss** — root focus is now re-requested whenever the controls overlay hides,
+  so after the 4s auto-hide removes the focused scrubber subtree the D-pad keeps reaching the
+  root handler (Up/Down reopen the overlay) instead of going dead mid-movie. While the overlay is
+  up the scrubber owns focus; the two no longer compete.
 
 - **#12 CI quality gate** — CI now runs `:app:lintRelease` after the unit tests, so the strict lint
   config (warningsAsErrors, abortOnError) actually gates the build. The fatal `Instantiatable` false

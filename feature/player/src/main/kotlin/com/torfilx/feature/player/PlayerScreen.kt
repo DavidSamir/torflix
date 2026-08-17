@@ -98,7 +98,12 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+    // Keep D-pad input alive. While the overlay is up its scrubber holds focus; when it hides, the
+    // focused controls subtree leaves composition, so focus must return to the root Box or the
+    // remote goes dead (Up/Down would no longer reach the handler that reopens the overlay).
+    LaunchedEffect(controlsVisible) {
+        if (!controlsVisible) runCatching { rootFocus.requestFocus() }
+    }
 
     // Auto-skip fires once per intro window, not on every frame of it.
     LaunchedEffect(state.showSkipIntro, autoSkipIntro) {
