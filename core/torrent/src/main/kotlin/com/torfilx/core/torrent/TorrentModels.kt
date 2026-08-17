@@ -119,5 +119,4 @@ object MagnetLink {
 }
 
 /** Converts a hex info hash to libtorrent's hash type. */
-internal fun String.toSha1Hash(): org.libtorrent4j.Sha1Hash =
-    org.libtorrent4j.Sha1Hash(org.libtorrent4j.swig.sha1_hash.from_hex(this))
+internal fun String.toSha1Hash(): org.libtorrent4j.Sha1Hash = org.libtorrent4j.Sha1Hash(this)

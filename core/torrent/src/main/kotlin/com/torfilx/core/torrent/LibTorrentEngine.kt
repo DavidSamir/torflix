@@ -162,7 +162,7 @@ class LibTorrentEngine @Inject constructor(
             return@withContext existing.toStream(streamServer.port)
         }
 
-        session.download(magnet, downloadDir, org.libtorrent4j.swig.torrent_flags_t())
+        session.download(magnet, downloadDir)
 
         // Metadata arrives from peers; without it there is nothing to prioritise or serve.
         val handle = withTimeoutOrNull(METADATA_TIMEOUT_MS) {
@@ -380,7 +380,14 @@ class LibTorrentEngine @Inject constructor(
         const val CONNECTION_LIMIT = 120
         const val ALERT_QUEUE_SIZE = 2_000
         const val USER_AGENT = "Torfilx/1.0 libtorrent/2.x"
-        const val METADATA_TIMEOUT_MS = 60_000L
+        /**
+         * How long to wait for peers to send the torrent details.
+         *
+         * Generous on purpose. A Fire TV stick joining a swarm from a cold start has to bootstrap
+         * DHT, reach the trackers over a home connection and find a peer holding the metadata, all
+         * on a 2016 CPU. A minute is enough on a desktop and routinely is not here.
+         */
+        const val METADATA_TIMEOUT_MS = 120_000L
         const val POLL_INTERVAL_MS = 250L
         const val STATUS_POLL_MS = 1_000L
         val VIDEO_EXTENSIONS = listOf(".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".mpg", ".mpeg")

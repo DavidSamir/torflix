@@ -3,6 +3,7 @@ package com.torfilx.tv
 import android.app.Application
 import android.content.Context
 import android.content.ComponentCallbacks2
+import android.os.Build
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -38,6 +39,9 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
     lateinit var catalog: BundledCatalog
 
     @Inject
+    lateinit var torrentEngine: dagger.Lazy<com.torfilx.core.torrent.TorrentEngine>
+
+    @Inject
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
@@ -53,6 +57,11 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
         // Parse and index the catalogue before the first screen asks for it, off the main thread:
         // with a few thousand entries this is tens of milliseconds that must not land on a frame.
         applicationScope.launch { catalog.preload() }
+
+        // Say plainly, once per launch, whether the BitTorrent engine can run on this device.
+        // Without it the only symptom is a message at the end of the play flow, long after the fact,
+        // and it is the first thing worth knowing when an unfamiliar Fire TV model misbehaves.
+        applicationScope.launch { reportTorrentEngineSupport() }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =
@@ -97,6 +106,26 @@ class TorfilxApplication : Application(), SingletonImageLoader.Factory {
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             TorfilxLog.i(TAG, "Trimming image memory cache (level=$level)")
             SingletonImageLoader.get(this).memoryCache?.clear()
+        }
+    }
+
+    /**
+     * Probes the native BitTorrent engine and records the outcome.
+     *
+     * Runs off the main thread because the first call is what loads `libtorrent4j.so`, and reports
+     * the device's ABI alongside the verdict: when a library fails to load it is almost always
+     * because the build for *that* architecture wants a newer libc than the device has.
+     */
+    private fun reportTorrentEngineSupport() {
+        val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: Build.CPU_ABI
+        val available = runCatching { torrentEngine.get().isAvailable() }.getOrDefault(false)
+        if (available) {
+            TorfilxLog.i(TAG, "Torrent engine available (abi=$abi, api=${Build.VERSION.SDK_INT})")
+        } else {
+            TorfilxLog.e(
+                TAG,
+                "Torrent engine UNAVAILABLE (abi=$abi, api=${Build.VERSION.SDK_INT}) — nothing will play",
+            )
         }
     }
 

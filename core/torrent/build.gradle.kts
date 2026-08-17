@@ -28,6 +28,7 @@ dependencies {
     implementation(libs.libtorrent4j.android.arm64)
     implementation(libs.libtorrent4j.android.arm)
     implementation(libs.libtorrent4j.android.x86.v64)
+    implementation(libs.libtorrent4j.android.x86)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
 }

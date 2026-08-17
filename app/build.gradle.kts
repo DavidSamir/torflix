@@ -10,8 +10,8 @@ android {
 
     defaultConfig {
         applicationId = "com.torfilx.tv"
-        versionCode = 6
-        versionName = "0.1.6"
+        versionCode = 7
+        versionName = "0.1.7"
         testInstrumentationRunner = "com.torfilx.tv.HiltTestRunner"
         resourceConfigurations += setOf("en", "he")
     }
@@ -74,6 +74,7 @@ dependencies {
     implementation(projects.core.ui)
     implementation(projects.core.data)
     implementation(projects.core.player)
+    implementation(projects.core.torrent)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.common)
 
