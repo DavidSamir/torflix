@@ -78,9 +78,16 @@ android {
         // ChromeOsAbiSupport wants an x86_64 ABI so the app runs on ChromeOS; this is a Fire TV app
         // (32-bit ARM only), and shipping x86 is exactly the bloat #15 removed, so the check does
         // not apply.
+        //
+        // IconMissingDensityFolder wants drawable-mdpi/hdpi buckets; those are phone densities. Fire
+        // TV renders at xhdpi (1080p) and xxhdpi/xxxhdpi (4K), which are the only buckets shipped, so
+        // the "missing" folders are intentional. This check is folder-level and its baseline
+        // fingerprint does not match across OSes (generated on Windows, CI runs on Linux), so it
+        // leaked past the baseline and, under warningsAsErrors, failed the Linux CI lint. Disabling
+        // it is the correct call for a TV-only app rather than shipping unused phone-density assets.
         disable += setOf(
             "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion",
-            "ObsoleteLintCustomCheck", "ChromeOsAbiSupport",
+            "ObsoleteLintCustomCheck", "ChromeOsAbiSupport", "IconMissingDensityFolder",
         )
         baseline = file("lint-baseline.xml")
     }
