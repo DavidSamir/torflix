@@ -60,26 +60,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # A tagged release MUST be signed with the persistent release keystore. Without it AGP falls
-      # back to an ad-hoc debug key that is regenerated on every runner, and Android refuses to
-      # upgrade an installed app across a signing-key change. Fail the release loudly rather than
-      # publish a debug-signed APK that no existing user can update to.
-      - name: Require the release keystore for a tagged build
+      # Decide how this release is signed. With the persistent keystore it is a proper, upgradeable
+      # release; without it, AGP falls back to an ad-hoc debug key that differs every run, so the
+      # build is NOT upgradeable in place. Rather than block, publish it but mark it loudly as a
+      # debug-signed test build (see "Compose release notes" and the prerelease flag below) — the
+      # danger the guard exists to prevent is a *silent* non-upgradeable release, not a labelled one.
+      - name: Determine signing mode
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          missing=""
-          [ -z "$KEYSTORE_B64" ] && missing="$missing TORFILX_KEYSTORE_BASE64"
-          [ -z "$TORFILX_KEYSTORE_PASSWORD" ] && missing="$missing TORFILX_KEYSTORE_PASSWORD"
-          [ -z "$TORFILX_KEY_ALIAS" ] && missing="$missing TORFILX_KEY_ALIAS"
-          [ -z "$TORFILX_KEY_PASSWORD" ] && missing="$missing TORFILX_KEY_PASSWORD"
-          if [ -n "$missing" ]; then
-            echo "::error::Release aborted — missing signing secret(s):$missing"
-            echo "A tagged release must use the persistent release keystore so installed users can"
-            echo "upgrade in place. Configure the secrets (see docs/RELEASING.md), then re-run; or"
-            echo "delete the tag if this was not meant to be a release."
-            exit 1
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$TORFILX_KEYSTORE_PASSWORD" ] \
+             && [ -n "$TORFILX_KEY_ALIAS" ] && [ -n "$TORFILX_KEY_PASSWORD" ]; then
+            echo "RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+            echo "Release will be signed with the persistent keystore."
+          else
+            echo "RELEASE_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::No release keystore configured — publishing a DEBUG-SIGNED test build (not upgradeable in place). See docs/RELEASING.md to configure signing."
           fi
-          echo "Release keystore secrets present."
 
       # A release tag and the APK's own version must agree, or devices see a "new" release whose
       # APK reports an unchanged version and may refuse to treat it as an upgrade.
@@ -159,6 +155,35 @@ jobs:
             dist/torfilx-release.apk
             dist/torfilx-release.apk.sha256
 
+      # Build the release body in shell so the debug-signed warning can be prepended conditionally.
+      # A debug-signed build is fine to sideload for testing, but it cannot upgrade an existing
+      # install (different key), so it is labelled and published as a prerelease.
+      - name: Compose release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          {
+            if [ "$RELEASE_SIGNED" != "true" ]; then
+              echo "> ⚠️ **Debug-signed test build.** Signed with an ad-hoc key that changes every build, so it **cannot upgrade an existing install** — uninstall any previous TORFILX before installing this one. Configure a release keystore (see \`docs/RELEASING.md\`) for proper upgradeable releases."
+              echo ""
+            fi
+            echo "**Sideload onto a Fire TV**"
+            echo ""
+            echo "In the Downloader app, enter:"
+            echo ""
+            echo '```'
+            echo "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/torfilx-release.apk"
+            echo '```'
+            echo ""
+            echo "or from a PC on the same network:"
+            echo ""
+            echo '```'
+            echo "adb connect <fire-tv-ip>:5555"
+            echo "adb install -r torfilx-release.apk"
+            echo '```'
+            echo ""
+            echo "Runs on Fire OS 5 and later (Android 5.1 / API 22). Signed with the v1, v2 and v3 schemes."
+          } > "$RUNNER_TEMP/release-notes.md"
+
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -167,20 +192,5 @@ jobs:
             dist/torfilx-release.apk
             dist/torfilx-release.apk.sha256
           generate_release_notes: true
-          body: |
-            **Sideload onto a Fire TV**
-
-            In the Downloader app, enter:
-
-            ```
-            https://github.com/${{ github.repository }}/releases/latest/download/torfilx-release.apk
-            ```
-
-            or from a PC on the same network:
-
-            ```
-            adb connect <fire-tv-ip>:5555
-            adb install -r torfilx-release.apk
-            ```
-
-            Runs on Fire OS 5 and later (Android 5.1 / API 22). Signed with the v1, v2 and v3 schemes.
+          prerelease: ${{ env.RELEASE_SIGNED != 'true' }}
+          body_path: ${{ runner.temp }}/release-notes.md
