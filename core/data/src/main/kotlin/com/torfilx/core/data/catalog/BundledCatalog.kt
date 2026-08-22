@@ -19,7 +19,7 @@ private const val TAG = "Catalog"
 private const val ASSET_NAME = "catalog.json"
 
 @Serializable
-private data class CatalogEntryDto(
+internal data class CatalogEntryDto(
     val title: String = "",
     val year: String? = null,
     @SerialName("image_url") val imageUrl: String? = null,
@@ -30,7 +30,7 @@ private data class CatalogEntryDto(
 )
 
 @Serializable
-private data class CatalogMagnetDto(
+internal data class CatalogMagnetDto(
     val quality: String? = null,
     val magnet: String = "",
 )
@@ -183,12 +183,54 @@ class BundledCatalog @Inject constructor(
         declaredCount = countDeclaredTitles(bytes)
         TorfilxLog.i(TAG, "Catalogue asset read: ${bytes.size} bytes, $declaredCount titles declared")
 
-        val items = parseCatalogStream(bytes.inputStream(), json)
+        val raw = bytes.decodeToString()
+
+        // Decode the whole array in one go, and only fall back to the entry-by-entry reader if that
+        // fails outright.
+        //
+        // The order matters and is the fix for the library shrinking. Streaming with
+        // `decodeToSequence` was introduced to survive a malformed entry and to keep peak memory
+        // down, but it fails *soft*: a decoder error part-way through leaves the entries decoded
+        // before it and stops, so the app carries on with a fraction of its content and nothing says
+        // so. That is exactly what an older build without the streaming reader does not do — it
+        // decoded atomically, so it either had the whole catalogue or visibly none of it, and it
+        // showed every film.
+        //
+        // Atomic-first restores that behaviour. The resilient reader is kept, but demoted to what it
+        // was actually wanted for: rescuing a hand-edited file with one bad line, where losing that
+        // line beats losing the library. It only runs when the atomic decode genuinely cannot
+        // proceed, and whichever path yields more titles wins.
+        //
+        // The memory argument for streaming does not survive contact with the numbers: the string is
+        // ~2 MB and the DTO list is transient, against a 2000-item object graph that is retained for
+        // the life of the process either way.
+        val atomic = runCatching { parseCatalogAtomic(raw, json) }
+            .onFailure {
+                TorfilxLog.e(TAG, "Atomic catalogue decode failed; trying the resilient reader", it)
+            }
+            .getOrNull()
+
+        val items = when {
+            atomic != null && (declaredCount == 0 || atomic.size >= declaredCount) -> atomic
+            else -> {
+                val streamed = parseCatalogStream(raw.byteInputStream(), json)
+                val best = listOfNotNull(atomic, streamed).maxByOrNull { it.size }.orEmpty()
+                TorfilxLog.w(
+                    TAG,
+                    "Atomic decode yielded ${atomic?.size ?: 0}, resilient reader ${streamed.size}; " +
+                        "using ${best.size}",
+                )
+                best
+            }
+        }
+
         if (declaredCount > 0 && items.size < declaredCount) {
             TorfilxLog.e(
                 TAG,
                 "CATALOGUE INCOMPLETE: parsed ${items.size} of $declaredCount declared titles",
             )
+        } else {
+            TorfilxLog.i(TAG, "Catalogue loaded in full: ${items.size} titles")
         }
         items
     }.getOrElse { error ->
@@ -232,19 +274,50 @@ internal fun countDeclaredTitles(bytes: ByteArray): Int {
  * are kept — a hand-edited catalogue with one broken line loses that line, not the whole library,
  * which used to collapse to an empty catalogue.
  */
+/**
+ * Decodes the whole array at once — all of it, or an exception.
+ *
+ * This is the primary path precisely *because* it cannot half-succeed. A decoder failure here is
+ * loud and recoverable; a decoder failure in the streaming reader is silent and permanent.
+ */
+internal fun parseCatalogAtomic(raw: String, json: Json): List<CatalogItem> {
+    val entries = json.decodeFromString<List<CatalogEntryDto>>(raw)
+    val items = ArrayList<CatalogItem>(entries.size)
+    consumeEntries(entries.asSequence(), items, HashSet())
+    return items
+}
+
+/**
+ * Maps decoded entries into items, skipping individually bad ones.
+ *
+ * Shared by both readers so they cannot drift apart in what they accept — the resilient path must
+ * never produce a *different* library from the atomic one, only a shorter one.
+ *
+ * @return how many entries were seen, which the caller uses for its error message.
+ */
+private fun consumeEntries(
+    entries: Sequence<CatalogEntryDto>,
+    into: MutableList<CatalogItem>,
+    usedIds: MutableSet<String>,
+): Int {
+    var index = 0
+    entries.forEach { entry ->
+        runCatching { mapCatalogEntry(entry, index, usedIds) }
+            .onFailure { TorfilxLog.w(TAG, "Catalogue entry $index skipped: ${it.message}") }
+            .getOrNull()
+            ?.let { into.add(it) }
+        index++
+    }
+    return index
+}
+
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 internal fun parseCatalogStream(stream: java.io.InputStream, json: Json): List<CatalogItem> {
     val usedIds = HashSet<String>()
     val items = ArrayList<CatalogItem>()
     var index = 0
     try {
-        json.decodeToSequence<CatalogEntryDto>(stream).forEach { entry ->
-            runCatching { mapCatalogEntry(entry, index, usedIds) }
-                .onFailure { TorfilxLog.w(TAG, "Catalogue entry $index skipped: ${it.message}") }
-                .getOrNull()
-                ?.let { items.add(it) }
-            index++
-        }
+        index = consumeEntries(json.decodeToSequence<CatalogEntryDto>(stream), items, usedIds)
     } catch (error: Throwable) {
         // A JSON syntax error mid-stream: keep everything parsed so far instead of losing it all.
         // Logged as an error, not a warning: a partial catalogue is the app quietly shipping a
@@ -255,9 +328,14 @@ internal fun parseCatalogStream(stream: java.io.InputStream, json: Json): List<C
     return items
 }
 
-/** Convenience for tests: parse a JSON string with the same resilient streaming path. */
+/**
+ * Convenience for tests: the same atomic-first, resilient-fallback pair the app uses.
+ *
+ * Tests that specifically want the resilient reader call [parseCatalogStream] directly.
+ */
 internal fun parseCatalog(raw: String, json: Json): List<CatalogItem> =
-    parseCatalogStream(raw.byteInputStream(), json)
+    runCatching { parseCatalogAtomic(raw, json) }
+        .getOrElse { parseCatalogStream(raw.byteInputStream(), json) }
 
 /** Maps one decoded entry to a validated item, or null when it has no usable title. */
 private fun mapCatalogEntry(
