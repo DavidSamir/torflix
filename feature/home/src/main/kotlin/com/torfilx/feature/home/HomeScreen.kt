@@ -156,6 +156,7 @@ private fun HomeContent(
                     ),
                     title = row.title,
                     items = row.items,
+                    totalItems = row.totalItems,
                     landscape = row.kind == HomeRowKind.CONTINUE_WATCHING,
                     onCardClick = { card ->
                         if (row.kind == HomeRowKind.CONTINUE_WATCHING) onPlay(card) else onCardClick(card)

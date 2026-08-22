@@ -16,9 +16,11 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -150,6 +152,14 @@ private fun FilterBar(
     onWatched: (WatchedFilter) -> Unit,
 ) {
     val dimens = LocalTorfilxDimens.current
+    val context = LocalContext.current
+    // Read from the installed package rather than BuildConfig: this module has no BuildConfig, and
+    // the package manager reports what is *actually installed*, which is the question being asked.
+    val appVersion = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -157,14 +167,19 @@ private fun FilterBar(
             .focusGroup(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // The total is on screen on purpose. A grid that stops scrolling looks exactly like a small
-        // catalogue, and that ambiguity is what made "some of the movies are missing" impossible to
-        // diagnose from the sofa. With a count, a truncated view is obvious at a glance.
+        // The total and the build are on screen on purpose, and together.
+        //
+        // "Some of the movies are missing" was impossible to pin down from the sofa because three
+        // different things look identical on a television: a catalogue that failed to load fully, a
+        // list that will not scroll, and an old build still installed. One line settles all three —
+        // the count says how much data actually loaded, and the version says whether the app running
+        // is the one that was just installed. A debug-signed APK cannot upgrade in place and the
+        // debug variant installs under its own id, so having two builds side by side is easy.
         if (!state.isLoading) {
             Text(
-                text = when (state.cards.size) {
-                    1 -> "1 title"
-                    else -> "${state.cards.size} titles"
+                text = buildString {
+                    append(if (state.cards.size == 1) "1 title" else "${state.cards.size} titles")
+                    if (appVersion.isNotEmpty()) append(" · v").append(appVersion)
                 },
                 style = MaterialTheme.typography.labelMedium,
                 color = TorfilxColors.TextSecondary,

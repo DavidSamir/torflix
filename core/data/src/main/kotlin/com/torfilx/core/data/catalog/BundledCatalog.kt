@@ -73,8 +73,28 @@ class BundledCatalog @Inject constructor(
         val searchKeys: List<String>,
     )
 
+    /**
+     * The parsed catalogue, built once — but **only a good result is kept**.
+     *
+     * A failed or short read used to be cached like any other outcome, which meant one bad read at
+     * startup left the app with a broken library for the entire life of the process, with no way
+     * back except force-stopping it. Since the read is the thing that has been going wrong, an
+     * incomplete result is now retried on the next access instead of being frozen in.
+     */
     private fun loaded(): Loaded = cached ?: synchronized(this) {
-        cached ?: buildLoaded().also { cached = it }
+        cached ?: buildLoaded().also { built ->
+            val complete = built.items.isNotEmpty() &&
+                (declaredCount == 0 || built.items.size >= declaredCount)
+            if (complete) {
+                cached = built
+            } else {
+                TorfilxLog.w(
+                    TAG,
+                    "Not caching an incomplete catalogue (${built.items.size} of $declaredCount); " +
+                        "the next read will try again",
+                )
+            }
+        }
     }
 
     /** Parses the asset eagerly, off the main thread. Safe to call more than once. */
@@ -124,12 +144,83 @@ class BundledCatalog @Inject constructor(
         )
     }
 
+    /** Titles the file declares, from the raw bytes — independent of the parser. */
+    @Volatile
+    var declaredCount: Int = 0
+        private set
+
+    /** True when fewer titles were parsed than the file declares. The library is incomplete. */
+    val isIncomplete: Boolean get() = declaredCount > 0 && loaded().items.size < declaredCount
+
+    /** Titles the file declares, so a screen can say "N of M" rather than just "N". */
+    fun declaredTitleCount(): Int {
+        loaded()
+        return declaredCount
+    }
+
+    /**
+     * Reads the asset **fully** before parsing, and checks the result against the file.
+     *
+     * Both halves of that matter, and both exist because a partial catalogue is invisible.
+     *
+     * Reading fully first: the parser used to decode straight off `AssetManager`'s stream. That
+     * stream is not a file — for a compressed asset it is an inflater, it can hand back short reads,
+     * and on the older Fire OS releases this app supports it can fail outright part-way through a
+     * multi-megabyte entry. `readBytes()` loops until end-of-stream, so either every byte arrives or
+     * it throws; there is no middle state where the parser sees a clean end-of-input that is really a
+     * truncated read. (The asset is also packaged uncompressed now — see `noCompress` in the app
+     * build file — which removes the inflater from the path altogether. This is the belt to that
+     * pair of braces.)
+     *
+     * Checking afterwards: [parseCatalogStream] is deliberately resilient — it keeps whatever it
+     * decoded before an error and stops quietly — which is right for one bad entry in a hand-edited
+     * file and completely wrong as a silent outcome. Counting what the file *declares* costs one
+     * pass over 2 MB, once, and turns "the app has fewer films than it should" from something only a
+     * viewer can notice into something the app states.
+     */
     private fun load(): List<CatalogItem> = runCatching {
-        context.assets.open(ASSET_NAME).use { parseCatalogStream(it, json) }
+        val bytes = context.assets.open(ASSET_NAME).use { it.readBytes() }
+        declaredCount = countDeclaredTitles(bytes)
+        TorfilxLog.i(TAG, "Catalogue asset read: ${bytes.size} bytes, $declaredCount titles declared")
+
+        val items = parseCatalogStream(bytes.inputStream(), json)
+        if (declaredCount > 0 && items.size < declaredCount) {
+            TorfilxLog.e(
+                TAG,
+                "CATALOGUE INCOMPLETE: parsed ${items.size} of $declaredCount declared titles",
+            )
+        }
+        items
     }.getOrElse { error ->
+        // A hard read failure now surfaces as an empty catalogue, which the Home screen states
+        // outright, rather than as a handful of titles that looks like a small library.
         TorfilxLog.e(TAG, "Bundled catalogue could not be read", error)
         emptyList()
     }
+}
+
+/**
+ * Counts `"title"` keys in the raw bytes.
+ *
+ * Deliberately not JSON-aware: the whole point is to have a number the parser cannot influence, so
+ * that "the parser stopped early" is detectable. Scans bytes rather than decoding to a string, which
+ * avoids a second multi-megabyte allocation on a small heap.
+ */
+internal fun countDeclaredTitles(bytes: ByteArray): Int {
+    val needle = "\"title\"".toByteArray()
+    var count = 0
+    var index = 0
+    outer@ while (index <= bytes.size - needle.size) {
+        for (offset in needle.indices) {
+            if (bytes[index + offset] != needle[offset]) {
+                index++
+                continue@outer
+            }
+        }
+        count++
+        index += needle.size
+    }
+    return count
 }
 
 /**
@@ -156,7 +247,9 @@ internal fun parseCatalogStream(stream: java.io.InputStream, json: Json): List<C
         }
     } catch (error: Throwable) {
         // A JSON syntax error mid-stream: keep everything parsed so far instead of losing it all.
-        TorfilxLog.w(TAG, "Catalogue parse stopped after $index entries: ${error.message}")
+        // Logged as an error, not a warning: a partial catalogue is the app quietly shipping a
+        // fraction of its content, and it looks exactly like a small library from the sofa.
+        TorfilxLog.e(TAG, "Catalogue parse STOPPED EARLY after $index entries -- the library is incomplete", error)
     }
     TorfilxLog.i(TAG, "Bundled catalogue: ${items.size} titles")
     return items

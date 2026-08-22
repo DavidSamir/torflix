@@ -107,6 +107,39 @@ version". Left failing loudly, and pinned by a test so the number cannot grow un
 
 ---
 
+## F. Catalogue read path — full audit
+
+Every stage between the JSON file and a card on screen, and what could silently lose titles at each.
+The rule applied throughout: **a failure must never look like a small library.** Either everything
+loads, or the app says so.
+
+| # | Stage | How it could lose titles | Status |
+| --- | --- | --- | --- |
+| F1 | `core/data/src/main/assets/catalog.json` | wrong or truncated source file | ✅ Verified 2000 entries, unique ids, 21 genres, 0 type errors; pinned by `CatalogFullLoadTest` |
+| F2 | Variant asset merge | a `src/<variant>/assets/catalog.json` silently replaces it | ✅ Offender removed; the app build now **fails** if one reappears |
+| F3 | APK packaging | asset compressed → inflated through `AssetManager`'s buffer, capped at 1 MB on older Android; ours was 2.1 MB **DEFLATEd** | ✅ `noCompress += "json"` — now `Stored`, verified in the APK. No inflater in the path at all |
+| F4 | `assets.open()` → parser | the stream is not a file: short reads, and it can fail part-way through a large entry | ✅ Read fully with `readBytes()` first, then parse from memory. Either every byte arrives or it throws — no silent middle state |
+| F5 | `decodeToSequence` short reads | a reader mistaking a short read for end-of-input truncates the library | ✅ Ruled out by test: parses all 2000 through a stream that returns **1 byte at a time**, and at 512/4k/8k/16k/64k |
+| F6 | Resilient parse loop | keeps what it decoded and stops **quietly** on error — right for one bad entry, wrong as a silent outcome | ✅ Now counts what the file declares (independently of the parser) and logs `CATALOGUE INCOMPLETE: parsed N of M` at error level |
+| F7 | `BundledCatalog` cache | a bad read was cached for the life of the process — one failure at startup meant a broken library until force-stop | ✅ An incomplete result is no longer cached; the next access retries |
+| F8 | `MediaRepository.views` cache | same hazard one layer down: sorted/grouped views cached from an incomplete catalogue | ✅ Not cached while the catalogue is incomplete |
+| F9 | `mapCatalogEntry` | drops entries with no title; ids disambiguated on collision | ✅ Reviewed — 0 dropped in the shipped file; per-entry skips are logged |
+| F10 | Home row caps (60/row) | a capped row is visually identical to a complete one — this is what made "Animation" look like 2 films instead of a preview of 217 | ✅ Rows now carry the real total and the header reads `60 of 217 · all in Movies` |
+| F11 | Genre row count cap | was 12 of 21 genres, silently | ✅ Raised to 32 — every genre gets a row |
+| F12 | Search limit | capped at 60 results with no indication | ✅ Raised to 500 |
+| F13 | Lazy-list focus dead-end | D-pad cannot reach uncomposed items, so every list stopped at the viewport edge | ✅ One shared helper applied to the browse grid, home rows, the home row column, and search results |
+| F14 | No way to tell what loaded | count, version and completeness were invisible on the device | ✅ Movies tab shows `N titles · v0.2.x`; an incomplete load is stated outright |
+
+### What this means
+
+F3 and F4 are the two that could actually have produced "the first few and then nothing" on a Fire
+TV while parsing perfectly on a desktop — a compressed 2.1 MB asset inflated through a capped buffer,
+read as a stream that can stop early. Both are now removed from the path rather than worked around,
+and F6/F7/F8 mean that if anything ever does go wrong again, the app reports it instead of quietly
+serving a fraction of the library.
+
+---
+
 ## Done log
 
 _(most recent first)_

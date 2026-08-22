@@ -17,6 +17,14 @@ data class HomeRow(
     val title: String,
     val kind: HomeRowKind = HomeRowKind.GENERIC,
     val items: List<MediaCard> = emptyList(),
+    /**
+     * How many titles the row *could* show, before it was capped for the D-pad.
+     *
+     * A home row is a preview, not the whole set — but a capped row is visually identical to a
+     * complete one, so "Animation" showing 60 of 217 looked exactly like a catalogue with 60
+     * animated films in it. Carrying the real total lets the header say so.
+     */
+    val totalItems: Int = items.size,
 )
 
 /** The featured items at the top of Home. */

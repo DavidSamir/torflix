@@ -38,6 +38,7 @@ fun MediaRow(
     onCardLongClick: ((MediaCard) -> Unit)? = null,
     landscape: Boolean = false,
     headerTrailing: @Composable (() -> Unit)? = null,
+    totalItems: Int = items.size,
 ) {
     if (items.isEmpty()) return
     val dimens = LocalTorfilxDimens.current
@@ -45,7 +46,14 @@ fun MediaRow(
     val scope = rememberCoroutineScope()
 
     Column(modifier = modifier.fillMaxWidth()) {
-        RowHeader(title = title, trailing = headerTrailing)
+        // A capped row looks identical to a complete one, which is how "Animation" showing a preview
+        // of 217 films read as a catalogue containing that handful. When the row is a preview, the
+        // header says so and points at where the rest lives.
+        RowHeader(
+            title = title,
+            subtitle = if (totalItems > items.size) "${items.size} of $totalItems · all in Movies" else null,
+            trailing = headerTrailing,
+        )
         LazyRow(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(dimens.cardSpacing),
@@ -100,6 +108,7 @@ fun MediaRow(
 fun RowHeader(
     title: String,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     val dimens = LocalTorfilxDimens.current
@@ -110,11 +119,24 @@ fun RowHeader(
         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = TorfilxColors.TextPrimary,
-        )
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = TorfilxColors.TextPrimary,
+            )
+            subtitle?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TorfilxColors.TextSecondary,
+                    modifier = Modifier.padding(bottom = 3.dp),
+                )
+            }
+        }
         trailing?.invoke()
     }
 }

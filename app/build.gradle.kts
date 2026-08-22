@@ -32,14 +32,26 @@ android {
 
     defaultConfig {
         applicationId = "com.torfilx.tv"
-        versionCode = 12
-        versionName = "0.2.2"
+        versionCode = 13
+        versionName = "0.2.3"
         testInstrumentationRunner = "com.torfilx.tv.HiltTestRunner"
         resourceConfigurations += setOf("en")
     }
 
     buildFeatures {
         buildConfig = true
+    }
+
+    androidResources {
+        // Ship the catalogue uncompressed.
+        //
+        // It is a 2.1 MB asset that was being DEFLATEd into the APK, and a *compressed* asset has to
+        // be inflated through AssetManager's buffer, which on older Android is capped
+        // (UNCOMPRESS_DATA_MAX, 1 MB) — squarely a Fire OS 5/6 concern, which is the floor this app
+        // targets. Stored, the asset is read straight out of the APK with no inflate step and no cap,
+        // and it also loads faster on a very slow CPU. The cost is APK size: the catalogue compresses
+        // ~91%, so this adds about 2 MB.
+        noCompress += "json"
     }
 
     signingConfigs {

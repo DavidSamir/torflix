@@ -54,13 +54,24 @@ class MediaRepository @Inject constructor(
         val byYear: List<MediaItem>,
         val byRating: List<MediaItem>,
         val genreRows: List<Pair<String, List<MediaItem>>>,
+        /** Real size of each genre before the row cap, so a row can say it is a preview. */
+        val genreTotals: Map<String, Int>,
     )
 
     @Volatile
     private var views: CatalogViews? = null
 
+    /**
+     * Catalogue-derived views, built once — but never cached from an incomplete catalogue.
+     *
+     * These sit downstream of the asset read, so caching them from a short read would preserve a
+     * broken library even after the catalogue itself recovered. Rebuilding a few sorted lists is
+     * cheap next to being stuck with a fraction of the content until the process is killed.
+     */
     private fun views(): CatalogViews = views ?: synchronized(this) {
-        views ?: buildViews().also { views = it }
+        views ?: buildViews().also { built ->
+            if (!catalog.isIncomplete) views = built
+        }
     }
 
     private fun buildViews(): CatalogViews {
@@ -80,6 +91,7 @@ class MediaRepository @Inject constructor(
                 .sortedBy { it.first }
                 // distinctBy is belt-and-braces: a row must never contain the same film twice.
                 .map { (genre, list) -> genre to list.distinctBy { item -> item.id }.take(MAX_ROW_ITEMS) },
+            genreTotals = byGenre.mapValues { (_, list) -> list.distinctBy { item -> item.id }.size },
         )
     }
 
@@ -114,6 +126,9 @@ class MediaRepository @Inject constructor(
 
     fun observeItemCount(): Flow<Int> = flowOf(catalog.mediaItems().size)
 
+    /** Titles the catalogue file declares. Differs from the loaded count only when a read failed. */
+    fun declaredItemCount(): Int = catalog.declaredTitleCount()
+
     suspend fun genres(): List<String> = withContext(ioDispatcher) { catalog.genres() }
 
     // --- Home ------------------------------------------------------------------------------------
@@ -146,7 +161,14 @@ class MediaRepository @Inject constructor(
 
             val recent = data.byRecent.take(MAX_ROW_ITEMS).toCards(progress, myListIds)
             if (recent.isNotEmpty()) {
-                add(HomeRow(id = ROW_CATALOG, title = "Recently added", items = recent))
+                add(
+                    HomeRow(
+                        id = ROW_CATALOG,
+                        title = "Recently added",
+                        items = recent,
+                        totalItems = data.byRecent.size,
+                    ),
+                )
             }
 
             if (myListIds.isNotEmpty()) {
@@ -174,6 +196,7 @@ class MediaRepository @Inject constructor(
                         id = "genre-$genre",
                         title = genre,
                         kind = HomeRowKind.GENRE,
+                        totalItems = data.genreTotals[genre] ?: items.size,
                         items = items.toCards(progress, myListIds),
                     ),
                 )
