@@ -5,13 +5,35 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+/**
+ * The catalogue is the app's entire content, and Android's asset merge lets a variant source set
+ * replace it without a word.
+ *
+ * A two-title `src/debug/assets/catalog.json` lived here and did exactly that: every debug build —
+ * which is the build the README tells people to sideload — shipped 2 films instead of 2000, and
+ * nothing in the build output or the app said so. Diverging content between variants is never worth
+ * the confusion it causes, so it is now a build failure rather than a surprise on the television.
+ */
+val shadowingCatalogues = file("src")
+    .listFiles()
+    .orEmpty()
+    .filter { it.isDirectory && it.name != "main" }
+    .map { File(it, "assets/catalog.json") }
+    .filter { it.exists() }
+
+require(shadowingCatalogues.isEmpty()) {
+    "A variant source set overrides the bundled catalogue, so this build would ship different " +
+        "content from a release build: ${shadowingCatalogues.joinToString { it.relativeTo(projectDir).path }}. " +
+        "Delete it — the catalogue in :core:data is the only one that should ship."
+}
+
 android {
     namespace = "com.torfilx.tv"
 
     defaultConfig {
         applicationId = "com.torfilx.tv"
-        versionCode = 10
-        versionName = "0.2.0"
+        versionCode = 11
+        versionName = "0.2.1"
         testInstrumentationRunner = "com.torfilx.tv.HiltTestRunner"
         resourceConfigurations += setOf("en")
     }

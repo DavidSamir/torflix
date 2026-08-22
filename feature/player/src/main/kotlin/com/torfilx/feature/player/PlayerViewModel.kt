@@ -40,6 +40,20 @@ class PlayerViewModel @Inject constructor(
     private val _controlsVisible = MutableStateFlow(true)
     val controlsVisible: StateFlow<Boolean> = _controlsVisible.asStateFlow()
 
+    /**
+     * Increments on every interaction with the overlay, so the auto-hide countdown can restart.
+     *
+     * A plain `visible` flag is not enough to drive that: `showControls()` writes `true` over `true`,
+     * a `StateFlow` does not re-emit an equal value, and the effect that owns the timer therefore
+     * never restarted. The overlay vanished four seconds after it first appeared no matter how much
+     * the viewer was pressing — which is what "the controls don't work properly" looked like.
+     */
+    private val _controlsRevision = MutableStateFlow(0L)
+    val controlsRevision: StateFlow<Long> = _controlsRevision.asStateFlow()
+
+    /** Timestamp of the last accepted seek nudge, for the repeat throttle. */
+    private var lastNudgeAtMs: Long = 0L
+
     /** Non-null while the user is scrubbing: the timeline shows this, the player has not moved yet. */
     private val _pendingSeekMs = MutableStateFlow<Long?>(null)
     val pendingSeekMs: StateFlow<Long?> = _pendingSeekMs.asStateFlow()
@@ -87,6 +101,7 @@ class PlayerViewModel @Inject constructor(
 
     fun showControls() {
         _controlsVisible.value = true
+        _controlsRevision.value++
     }
 
     fun hideControls() {
@@ -95,6 +110,7 @@ class PlayerViewModel @Inject constructor(
 
     fun toggleControls() {
         _controlsVisible.value = !_controlsVisible.value
+        _controlsRevision.value++
     }
 
     fun togglePlayPause() {
@@ -109,6 +125,14 @@ class PlayerViewModel @Inject constructor(
      * decoder. The screen commits the accumulated target after a short idle period (plan.md §7.4).
      */
     fun nudgeSeek(deltaMs: Long) {
+        // Holding the key fires ~20 events a second. Accumulating a full 10-second step for each one
+        // means a one-second press jumps over three minutes of film, which is impossible to aim with.
+        // Throttling the *accepted* nudges keeps a held key scrubbing at a usable rate while a single
+        // deliberate press — always far apart than this — is never dropped.
+        val now = System.currentTimeMillis()
+        if (now - lastNudgeAtMs < NUDGE_THROTTLE_MS) return
+        lastNudgeAtMs = now
+
         val base = _pendingSeekMs.value ?: state.value.positionMs
         val duration = state.value.durationMs
         val target = (base + deltaMs).coerceIn(0L, if (duration > 0) duration else Long.MAX_VALUE)
@@ -146,7 +170,14 @@ class PlayerViewModel @Inject constructor(
             controller.retry()
         }
     }
-    fun noteUserInput() = controller.noteUserInput()
+    /**
+     * Any remote key press. Keeps the overlay alive while the viewer is using it, and tells the
+     * controller the viewer is present so "are you still watching?" does not fire at them.
+     */
+    fun noteUserInput() {
+        controller.noteUserInput()
+        if (_controlsVisible.value) _controlsRevision.value++
+    }
     fun dismissStillWatching(continueWatching: Boolean) = controller.dismissStillWatching(continueWatching)
 
     /**
@@ -174,5 +205,8 @@ class PlayerViewModel @Inject constructor(
         const val ARG_START_POSITION = "startPositionMs"
         const val ARG_SOURCE_ID = "sourceId"
         private const val DISPLAY_SWITCH_SETTLE_MS = 1_500L
+
+        /** Minimum gap between accepted seek nudges while a direction key is held. */
+        private const val NUDGE_THROTTLE_MS = 150L
     }
 }

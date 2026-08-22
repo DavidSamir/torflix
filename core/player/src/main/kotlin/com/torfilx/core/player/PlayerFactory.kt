@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -104,9 +105,24 @@ class PlayerFactory @Inject constructor(
     /**
      * Media comes from the app.s own loopback torrent stream server, so the platform HTTP stack is
      * all that is needed — there is no server auth or connection pool to share.
+     *
+     * The timeouts are the part that matters. Media3 defaults to 8 seconds, which is sized for a CDN
+     * that either answers or does not; this server answers out of a swarm, and a response can take
+     * tens of seconds to begin while peers are found and the first pieces land. With the default the
+     * player gave up first and reported a network error against a download that was proceeding
+     * perfectly well — which is what made a new title fail on the first attempt and succeed on a
+     * later one. The socket is loopback, so a generous timeout costs nothing: there is no real
+     * network that could hang, only the swarm behind it, and the buffering overlay reports its
+     * progress while the wait happens.
      */
     @OptIn(UnstableApi::class)
-    private fun dataSourceFactory(): DataSource.Factory = DefaultDataSource.Factory(context)
+    private fun dataSourceFactory(): DataSource.Factory {
+        val http = DefaultHttpDataSource.Factory()
+            .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
+            .setReadTimeoutMs(READ_TIMEOUT_MS)
+            .setAllowCrossProtocolRedirects(false)
+        return DefaultDataSource.Factory(context, http)
+    }
 
     /**
      * A codec selector that lists software decoders ahead of hardware ones.
@@ -131,5 +147,15 @@ class PlayerFactory @Inject constructor(
         const val BUFFER_FOR_PLAYBACK_MS = 2_500
         const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
         const val SEEK_INCREMENT_MS = 10_000L
+
+        /**
+         * Loopback connect and read timeouts.
+         *
+         * Read covers waiting for the response to begin as well as gaps between chunks, so it must
+         * exceed the stream server.s own first-byte deadline — otherwise the player abandons a
+         * request the server was about to answer.
+         */
+        const val CONNECT_TIMEOUT_MS = 15_000
+        const val READ_TIMEOUT_MS = 60_000
     }
 }

@@ -18,6 +18,7 @@ import com.torfilx.core.data.repository.ProgressRepository
 import com.torfilx.core.data.settings.SettingsRepository
 import com.torfilx.core.data.torrent.TorrentCoordinator
 import com.torfilx.core.torrent.TorrentError
+import com.torfilx.core.torrent.TorrentStream
 import com.torfilx.core.model.AppSettings
 import com.torfilx.core.model.MediaItem as DomainMediaItem
 import com.torfilx.core.model.ResumeRules
@@ -87,6 +88,18 @@ class PlaybackController @Inject constructor(
 
     /** Info hash of the torrent currently feeding the player, if any. */
     private var activeTorrentInfoHash: String? = null
+
+    /** How far the silent-audio escalation has got for the current title. See [recoverAudioIfSilent]. */
+    private var audioRecoveryStage: Int = STAGE_NONE
+
+    /**
+     * Set once tunneled playback has been implicated in a title playing silently.
+     *
+     * Session-scoped rather than persisted: the stored setting stays as the user left it, so a
+     * device that only struggles with one odd file is not permanently downgraded.
+     */
+    @Volatile
+    private var disableTunnelingForSession: Boolean = false
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -177,7 +190,18 @@ class PlaybackController @Inject constructor(
     }
 
     private suspend fun openInternal(request: PlaybackRequest) {
-        settings = settingsRepository.settings.first()
+        // A title being re-opened by audio recovery must keep its progress through the escalation,
+        // or the same failed remedy would be tried forever.
+        if (resolved?.playableId != request.playableId) {
+            audioRecoveryStage = STAGE_NONE
+        }
+
+        settings = settingsRepository.settings.first().let { stored ->
+            // Tunneling is disabled for the rest of the session once it has been implicated in
+            // silent playback; the stored preference is left untouched so the device is re-probed on
+            // the next launch rather than being permanently downgraded by one bad file.
+            if (disableTunnelingForSession) stored.copy(tunneledPlayback = false) else stored
+        }
         _state.value = PlayerUiState(isLoading = true)
 
         val info = try {
@@ -246,16 +270,10 @@ class PlaybackController @Inject constructor(
         // that serves pieces as they arrive, so playback starts long before the download finishes.
         val playbackUrl = if (source.kind == SourceKind.TORRENT) {
             val magnet = source.magnetUri ?: source.url
-            try {
-                val stream = torrentCoordinator.stream(magnet)
-                activeTorrentInfoHash = stream.infoHash
-                startStreamStatsTicker(stream.infoHash)
-                stream.url
-            } catch (error: TorrentError) {
-                TorfilxLog.w(TAG, "Torrent stream failed for ${request.playableId}", error)
-                _state.value = _state.value.copy(isLoading = false, error = error.toPlaybackError())
-                return
-            }
+            val stream = streamWithRetry(magnet, request.playableId) ?: return
+            activeTorrentInfoHash = stream.infoHash
+            startStreamStatsTicker(stream.infoHash)
+            stream.url
         } else {
             activeTorrentInfoHash = null
             source.url
@@ -272,6 +290,8 @@ class PlaybackController @Inject constructor(
         _state.value = _state.value.copy(
             isLoading = false,
             error = null,
+            loadingDetail = null,
+            audioUnavailableReason = null,
             title = item?.title.orEmpty(),
             item = item,
             durationMs = durationMs,
@@ -283,6 +303,51 @@ class PlaybackController @Inject constructor(
         )
         lastUserInputMs = System.currentTimeMillis()
         startPositionTicker()
+    }
+
+    /**
+     * Resolves a magnet, retrying a swarm timeout instead of making the viewer do it.
+     *
+     * The reported behaviour was "it says network error, and I have to press retry three or four
+     * times". Pressing retry worked because each attempt gave the DHT and the trackers more time —
+     * so the app should do it. The engine keeps the torrent in its session between attempts, so a
+     * second attempt usually resolves from metadata that arrived during the first, rather than
+     * starting over.
+     *
+     * Only a metadata timeout is retried. "No space", "no video file in this torrent", an invalid
+     * magnet or a missing engine are all permanent for this title, and repeating them would only
+     * make the viewer wait longer for the same answer.
+     */
+    private suspend fun streamWithRetry(magnet: String, playableId: String): TorrentStream? {
+        var lastError: TorrentError? = null
+        for (attempt in 1..STREAM_ATTEMPTS) {
+            if (attempt > 1) {
+                _state.value = _state.value.copy(
+                    loadingDetail = "Still looking for peers — attempt $attempt of $STREAM_ATTEMPTS",
+                )
+                delay(STREAM_RETRY_BACKOFF_MS)
+            }
+            try {
+                return torrentCoordinator.stream(magnet)
+            } catch (error: TorrentError) {
+                lastError = error
+                val transient = error is TorrentError.MetadataTimeout
+                TorfilxLog.w(
+                    TAG,
+                    "Stream attempt $attempt/$STREAM_ATTEMPTS failed for $playableId " +
+                        "(${error::class.simpleName}, ${if (transient) "retrying" else "permanent"})",
+                    error,
+                )
+                if (!transient) break
+            }
+        }
+        _state.value = _state.value.copy(
+            isLoading = false,
+            loadingDetail = null,
+            error = lastError?.toPlaybackError()
+                ?: PlaybackError.Unknown("This title could not be started."),
+        )
+        return null
     }
 
     @OptIn(UnstableApi::class)
@@ -472,6 +537,105 @@ class PlaybackController @Inject constructor(
         }
 
         _state.value = _state.value.copy(audioTracks = audio, subtitleTracks = text)
+        recoverAudioIfSilent(audio)
+    }
+
+    /**
+     * Rescues playback that has video but no sound.
+     *
+     * This is the "the picture plays but there is no audio" report, and the reason it is invisible is
+     * that it is **not an error** to ExoPlayer: if no audio track can be decoded, the audio renderer
+     * simply selects nothing and the video plays on. Nothing is thrown, nothing is logged, and the
+     * result is indistinguishable from a muted television.
+     *
+     * Public-domain rips are exactly the population where this bites: they carry AC3, DTS, MP3,
+     * Vorbis or Opus in MKV/AVI containers, and which of those a given Fire TV can decode varies by
+     * model and by Fire OS generation. Extension renderers are off (there is no bundled FFmpeg), so
+     * an undecodable track has no software fallback.
+     *
+     * Three escalating recoveries, each tried once per title:
+     *  1. **Re-select.** A decodable track exists but was passed over — almost always because a
+     *     preferred audio language filtered it out, or because a previous title's override is still
+     *     in force on the reused player. Clear both and pick the first decodable track.
+     *  2. **Drop tunneling.** Tunneled playback requires the audio *and* video decoders to tunnel
+     *     together; where the audio side cannot, the selector can end up with no audio at all. The
+     *     capability probe only inspects video decoders, so this cannot be ruled out up front. The
+     *     player is rebuilt without tunneling for the rest of the session.
+     *  3. **Explain.** Nothing else can be done on-device, so the state carries a reason naming the
+     *     codecs found, and the player screen shows it instead of leaving the viewer guessing.
+     */
+    @OptIn(UnstableApi::class)
+    private fun recoverAudioIfSilent(audio: List<TrackOption>) {
+        val exo = player ?: return
+        val hasVideo = exo.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO }
+
+        val remedy = audioRemedyFor(
+            hasVideo = hasVideo,
+            tracks = audio.map { AudioTrackState(isSelected = it.isSelected, isDecodable = it.isSelectable) },
+            stage = audioRecoveryStage,
+            tunnelingEnabled = settings.tunneledPlayback,
+        )
+
+        when (remedy) {
+            AudioRemedy.NOTHING -> {
+                if (audio.any { it.isSelected }) audioRecoveryStage = STAGE_DONE
+                if (_state.value.audioUnavailableReason != null) {
+                    _state.value = _state.value.copy(audioUnavailableReason = null)
+                }
+            }
+
+            AudioRemedy.NO_AUDIO_TRACK -> {
+                if (_state.value.audioUnavailableReason == null) {
+                    _state.value = _state.value.copy(
+                        audioUnavailableReason = "This file has no audio track.",
+                    )
+                }
+            }
+
+            AudioRemedy.RESELECT -> {
+                audioRecoveryStage = STAGE_RESELECT
+                val decodable = audio.first { it.isSelectable }
+                TorfilxLog.w(
+                    TAG,
+                    "No audio selected but \"${decodable.label}\" is decodable; " +
+                        "clearing language preference and overrides",
+                )
+                exo.trackSelectionParameters = exo.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setPreferredAudioLanguages()
+                    .build()
+                applyTrackSelection(C.TRACK_TYPE_AUDIO, decodable.id)
+            }
+
+            AudioRemedy.DROP_TUNNELING -> {
+                audioRecoveryStage = STAGE_DROP_TUNNELING
+                disableTunnelingForSession = true
+                TorfilxLog.w(TAG, "Still no audio; rebuilding the player without tunneling")
+                val info = resolved ?: return
+                scope.launch {
+                    open(
+                        PlaybackRequest(
+                            playableId = info.playableId,
+                            sourceId = info.sourceId,
+                            startPositionMs = _state.value.positionMs,
+                        ),
+                    )
+                }
+            }
+
+            AudioRemedy.REPORT -> {
+                audioRecoveryStage = STAGE_DONE
+                val codecs = audio.joinToString(", ") { it.label }
+                TorfilxLog.w(TAG, "No decodable audio track for ${resolved?.playableId}: $codecs")
+                _state.value = _state.value.copy(
+                    audioUnavailableReason =
+                    "This device cannot decode this file's audio ($codecs). " +
+                        "Try another version of the title from the details screen.",
+                )
+            }
+        }
     }
 
     private fun audioLabel(language: String?, label: String?, channels: Int, codecs: String?): String {
@@ -661,6 +825,26 @@ class PlaybackController @Inject constructor(
             else -> false
         }
 
+        // An audio renderer that fails to initialise while tunneling is on is the classic symptom of
+        // a decoder that cannot tunnel. Dropping tunneling keeps the *same* source — far better than
+        // condemning a perfectly good file and moving to a lower-quality one.
+        if (isDecoderProblem && info != null && isAudioRendererFailure(error) &&
+            settings.tunneledPlayback && !disableTunnelingForSession
+        ) {
+            disableTunnelingForSession = true
+            TorfilxLog.w(TAG, "Audio renderer failed with tunneling on; retrying without it")
+            scope.launch {
+                open(
+                    PlaybackRequest(
+                        playableId = info.playableId,
+                        sourceId = info.sourceId,
+                        startPositionMs = _state.value.positionMs,
+                    ),
+                )
+            }
+            return
+        }
+
         if (isDecoderProblem && info != null) {
             playbackInfoRepository.markSourceFailed(info.playableId, info.sourceId)
             scope.launch {
@@ -690,6 +874,24 @@ class PlaybackController @Inject constructor(
                 else -> PlaybackError.Unknown("Playback failed (${error.errorCodeName}).")
             },
         )
+    }
+
+    /**
+     * True when the failure came from the audio renderer rather than the video one.
+     *
+     * Media3 does not expose the track type on [PlaybackException], only on the `ExoPlaybackException`
+     * subtype, and even there the renderer is identified by name. Matching on the name is crude but
+     * it is the only signal available, and getting it wrong merely costs one extra retry.
+     */
+    @OptIn(UnstableApi::class)
+    private fun isAudioRendererFailure(error: PlaybackException): Boolean {
+        val exoError = error as? androidx.media3.exoplayer.ExoPlaybackException ?: return false
+        if (exoError.type != androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER) return false
+        return runCatching {
+            exoError.rendererName?.contains("Audio", ignoreCase = true) == true ||
+                exoError.rendererFormatSupport == C.FORMAT_UNSUPPORTED_SUBTYPE &&
+                exoError.rendererFormat?.sampleMimeType?.startsWith("audio/") == true
+        }.getOrDefault(false)
     }
 
     /** Called by the UI's retry button. */
@@ -785,5 +987,15 @@ class PlaybackController @Inject constructor(
         const val TICK_INTERVAL_MS = 500L
         const val SAVE_INTERVAL_MS = 10_000L
         const val STILL_WATCHING_IDLE_MS = 3 * 60 * 60 * 1000L
+
+        /**
+         * How many times a magnet is resolved before the viewer is told it failed.
+         *
+         * Two, not more: with the session warmed at startup a single attempt normally succeeds, and
+         * each further attempt costs a full metadata timeout of the viewer.s time for a swarm that
+         * has already had that long to answer.
+         */
+        const val STREAM_ATTEMPTS = 2
+        const val STREAM_RETRY_BACKOFF_MS = 2_000L
     }
 }

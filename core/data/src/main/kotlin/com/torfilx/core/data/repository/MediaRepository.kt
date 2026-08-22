@@ -245,7 +245,15 @@ class MediaRepository @Inject constructor(
 
         /** A TV row longer than this is unreachable by D-pad and only costs memory. */
         private const val MAX_ROW_ITEMS = 60
-        private const val MAX_GENRE_ROWS = 12
+
+        /**
+         * Every genre gets a row.
+         *
+         * This was 12, which silently hid nine of the catalogue's genres and a large slice of the
+         * library behind them — part of why the app looked like it held a fraction of what it does.
+         * The rows are lazy, so the cost of the extra ones is a list of card wrappers, not layout.
+         */
+        private const val MAX_GENRE_ROWS = 32
         private const val MIN_GENRE_ROW_SIZE = 2
     }
 }

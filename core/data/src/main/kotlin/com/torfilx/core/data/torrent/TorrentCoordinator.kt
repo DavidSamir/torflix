@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,8 +49,12 @@ class TorrentCoordinator @Inject constructor(
             .onEach { consented ->
                 settingsRepository.cachedSharingConsent = consented
                 libTorrentEngine.onConsentChanged(consented)
-                if (!consented) {
-                    // Withdrawing consent stops sharing immediately and gives the disk back.
+                if (consented) {
+                    warmUp()
+                } else {
+                    // Withdrawing consent stops sharing immediately and gives the disk back. The
+                    // session goes with it, so a later re-consent must warm a fresh one.
+                    warmedUp = false
                     runCatching { engine.stop() }
                         .onFailure { TorfilxLog.w(TAG, "Could not stop engine after consent removal", it) }
                 }
@@ -75,6 +80,40 @@ class TorrentCoordinator @Inject constructor(
     }
 
     fun isAvailable(): Boolean = engine.isAvailable()
+
+    /**
+     * Brings the session up before anything is played.
+     *
+     * The DHT takes tens of seconds to bootstrap from cold. Starting the session only when the user
+     * presses Play meant the first title of every session raced a DHT with zero nodes and timed out
+     * looking for peers — the reported "it says network error, and works on the third or fourth
+     * retry", because by then the DHT had finally populated.
+     *
+     * Only runs once consent exists: without it nothing may be downloaded or uploaded anyway, and
+     * bringing up a DHT node would put the viewer's address on the network before they agreed to it.
+     * The consent flow calls back into here the moment that changes, so a first-time viewer gets a
+     * warm session from the point they accept rather than from their first play.
+     */
+    private fun warmUp() {
+        if (warmedUp) return
+        warmedUp = true
+        scope.launch {
+            val startedAt = System.currentTimeMillis()
+            runCatching { engine.start() }
+                .onSuccess {
+                    TorfilxLog.i(TAG, "Torrent session warmed in ${System.currentTimeMillis() - startedAt}ms")
+                }
+                .onFailure {
+                    // Not fatal: the play path starts the engine itself and reports failure there,
+                    // where the user can see it. Reset so a later play retries the start.
+                    warmedUp = false
+                    TorfilxLog.w(TAG, "Could not warm the torrent session (will retry on play)", it)
+                }
+        }
+    }
+
+    @Volatile
+    private var warmedUp: Boolean = false
 
     /** Resolves a magnet into a locally-served URL the player can open. */
     suspend fun stream(magnet: String): TorrentStream {

@@ -33,19 +33,83 @@ internal fun bytesUntilPieceEnd(fileOffset: Long, pieceLength: Int, fileByteOffs
     return (nextBoundary - absolute).coerceAtLeast(1L)
 }
 
+/**
+ * Percent-encodes a file name so it survives as a single URL path segment.
+ *
+ * `URLEncoder` is form encoding, not path encoding: it turns a space into `+`, which a path reader
+ * would take literally, so that one case is corrected. Slashes are already encoded by it.
+ */
+internal fun String.toUrlPathSegment(): String =
+    java.net.URLEncoder.encode(this, "UTF-8").replace("+", "%20")
+
+/**
+ * The MIME type for a video file name.
+ *
+ * Serving everything as `video/mp4` (what this used to do) tells ExoPlayer to try the MP4 extractor
+ * first for an MKV or AVI. It recovers by sniffing, but only after wasting the first reads of a
+ * stream that is arriving piece by piece — and a mis-sniff on a partially-arrived header is one more
+ * way for a title to fail on the first attempt and work on the third.
+ */
+internal fun contentTypeFor(fileName: String): String =
+    when (fileName.substringAfterLast('.', "").lowercase()) {
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "avi" -> "video/x-msvideo"
+        "mov" -> "video/quicktime"
+        "ts", "m2ts", "mts" -> "video/mp2t"
+        "flv" -> "video/x-flv"
+        "wmv" -> "video/x-ms-wmv"
+        "mpg", "mpeg" -> "video/mpeg"
+        "ogv" -> "video/ogg"
+        "3gp" -> "video/3gpp"
+        else -> "video/mp4"
+    }
+
+/**
+ * What the HTTP server needs from the thing it is serving.
+ *
+ * Narrow on purpose: everything here is answerable without libtorrent, so the server's protocol
+ * behaviour — in particular its promise never to send a short body — is testable against a fake with
+ * a real file behind it. Before this, the only implementation dragged in a native `TorrentHandle` and
+ * the server could not be exercised at all.
+ */
+internal interface StreamSource {
+    val infoHash: String
+    val fileName: String
+    val fileSizeBytes: Long
+    val filePath: File
+
+    /** True when the byte at [fileByteOffset] is on disk and safe to read. */
+    fun isReadableAt(fileByteOffset: Long): Boolean
+
+    /** How far a single read may go from [fileByteOffset] without crossing into another piece. */
+    fun bytesUntilPieceEnd(fileByteOffset: Long): Long
+
+    /** Asks for the pieces around [fileByteOffset] to be fetched next. */
+    fun prioritiseFrom(fileByteOffset: Long)
+
+    /** Marks the source as recently used, so eviction leaves it alone. */
+    fun touch()
+}
+
 /** One torrent being streamed, plus the piece bookkeeping that makes seeking work. */
 internal class StreamedTorrent(
-    val infoHash: String,
+    override val infoHash: String,
     val handle: TorrentHandle,
     val fileIndex: Int,
-    val fileName: String,
-    val fileSizeBytes: Long,
-    val filePath: File,
+    override val fileName: String,
+    override val fileSizeBytes: Long,
+    override val filePath: File,
     val pieceLength: Int,
     val fileOffset: Long,
     val numPieces: Int,
     var lastTouchedMs: Long,
-) {
+) : StreamSource {
+
+    /** Eviction orders by last use; streaming a byte counts as use. */
+    override fun touch() {
+        lastTouchedMs = System.currentTimeMillis()
+    }
 
     /**
      * False once playback has stopped but the torrent is still in the session, seeding.
@@ -57,12 +121,24 @@ internal class StreamedTorrent(
     @Volatile
     var isStreaming: Boolean = true
 
+    /**
+     * The loopback URL for this torrent.
+     *
+     * The file name is appended as a second path segment purely so the URL carries the real
+     * extension (`.mkv`, `.avi`, …). ExoPlayer uses it to order its extractors, which both speeds up
+     * the first open and stops a mis-sniffed container from being handed to the wrong parser. The
+     * server keys off the *first* segment only, so the name is cosmetic and may be anything.
+     */
     fun toStream(port: Int) = TorrentStream(
         infoHash = infoHash,
-        url = "http://127.0.0.1:$port/$infoHash",
+        url = "http://127.0.0.1:$port/$infoHash/${fileName.toUrlPathSegment()}",
         fileName = fileName,
         fileSizeBytes = fileSizeBytes,
     )
+
+    /** True once the file exists on disk and the piece holding [fileByteOffset] has arrived. */
+    override fun isReadableAt(fileByteOffset: Long): Boolean =
+        filePath.exists() && hasByte(fileByteOffset)
 
     /** Piece index containing [fileByteOffset] of the selected file. */
     fun pieceOf(fileByteOffset: Long): Int =
@@ -78,7 +154,7 @@ internal class StreamedTorrent(
      * the piece at the read position, but the following piece may still be a hole in the sparse file
      * that would read back as zeros and feed corrupt data to the decoder.
      */
-    fun bytesUntilPieceEnd(fileByteOffset: Long): Long =
+    override fun bytesUntilPieceEnd(fileByteOffset: Long): Long =
         bytesUntilPieceEnd(fileOffset, pieceLength, fileByteOffset)
 
     /**
@@ -87,7 +163,7 @@ internal class StreamedTorrent(
      * This is what turns BitTorrent (which normally fetches rarest-first, in any order) into
      * something streamable: a deadline on the next few pieces and descending priority after that.
      */
-    fun prioritiseFrom(fileByteOffset: Long) {
+    override fun prioritiseFrom(fileByteOffset: Long) {
         runCatching {
             val first = pieceOf(fileByteOffset)
             val last = min(first + READ_AHEAD_PIECES, numPieces - 1)
@@ -125,9 +201,14 @@ internal class StreamedTorrent(
  *
  * It binds to 127.0.0.1 only — nothing outside the device can reach it.
  */
-internal class TorrentStreamServer {
+internal class TorrentStreamServer(
+    /** How long the first byte of a response may take before the request is refused with a 503. */
+    private val firstByteTimeoutMs: Long = FIRST_BYTE_TIMEOUT_MS,
+    /** How long a mid-body read waits for the next piece before treating the swarm as stalled. */
+    private val pieceTimeoutMs: Long = PIECE_TIMEOUT_MS,
+) {
 
-    private val streams = ConcurrentHashMap<String, StreamedTorrent>()
+    private val streams = ConcurrentHashMap<String, StreamSource>()
     private val executor = Executors.newCachedThreadPool()
 
     @Volatile
@@ -153,7 +234,7 @@ internal class TorrentStreamServer {
         executor.shutdownNow()
     }
 
-    fun register(streamed: StreamedTorrent) {
+    fun register(streamed: StreamSource) {
         streams[streamed.infoHash] = streamed
     }
 
@@ -210,7 +291,10 @@ internal class TorrentStreamServer {
                 }
             }
 
-            val streamed = streams[path]
+            // The key is the first path segment; anything after it (the file name, a query string)
+            // is decoration that must not affect the lookup.
+            val key = path.substringBefore('?').substringBefore('/')
+            val streamed = streams[key]
             val output = BufferedOutputStream(socket.getOutputStream())
             if (streamed == null) {
                 output.write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".toByteArray())
@@ -239,9 +323,43 @@ internal class TorrentStreamServer {
             val end = if (rangeEnd in 0 until total) rangeEnd else total - 1
             val length = (end - rangeStart + 1).coerceAtLeast(0)
 
+            // A HEAD is only ever a probe for the length and range support, so it needs no data and
+            // must not be made to wait for a piece.
+            val isHead = method.equals("HEAD", ignoreCase = true)
+
+            // Nothing is committed to the socket until the first byte can actually be produced.
+            //
+            // This is the fix for "opening a title says network error, and works on the third try".
+            // Previously the headers — including a Content-Length — went out immediately and the body
+            // loop then discovered that libtorrent had not yet created the file on disk, returned,
+            // and closed the socket. A body shorter than its declared Content-Length is a hard I/O
+            // failure to ExoPlayer, surfaced as "Connection lost". It happened on the *first* request
+            // for every new title, because that is exactly when the file does not exist yet.
+            //
+            // Failing *before* the status line means a failure can be an honest 503, which is
+            // retryable and diagnosable, instead of a corrupt response.
+            if (!isHead) {
+                streamed.prioritiseFrom(rangeStart)
+                if (!awaitReadable(streamed, rangeStart, firstByteTimeoutMs)) {
+                    TorfilxLog.w(
+                        TAG,
+                        "No data for ${streamed.fileName} at $rangeStart after " +
+                            "${firstByteTimeoutMs / 1000}s; answering 503",
+                    )
+                    output.write(
+                        (
+                            "HTTP/1.1 503 Service Unavailable\r\n" +
+                                "Content-Length: 0\r\nConnection: close\r\n\r\n"
+                            ).toByteArray(),
+                    )
+                    output.flush()
+                    return
+                }
+            }
+
             val headers = buildString {
                 append(if (rangeRequested) "HTTP/1.1 206 Partial Content\r\n" else "HTTP/1.1 200 OK\r\n")
-                append("Content-Type: video/mp4\r\n")
+                append("Content-Type: ${contentTypeFor(streamed.fileName)}\r\n")
                 append("Accept-Ranges: bytes\r\n")
                 append("Content-Length: $length\r\n")
                 if (rangeRequested) {
@@ -250,38 +368,56 @@ internal class TorrentStreamServer {
                 append("Connection: close\r\n\r\n")
             }
             output.write(headers.toByteArray())
-            if (method.equals("HEAD", ignoreCase = true)) {
+            if (isHead) {
                 output.flush()
                 return
             }
 
-            streamed.prioritiseFrom(rangeStart)
             serveBytes(streamed, rangeStart, length, output)
         }
     }
 
+    /**
+     * Writes the body.
+     *
+     * The contract with the client is absolute: exactly [length] bytes must be written, because that
+     * is what the `Content-Length` header promised. Every path out of the loop other than "wrote it
+     * all" is therefore a broken response, and the only honest way to end early is to close the
+     * socket — which is what happens when this throws. That case is now reserved for a swarm that has
+     * genuinely stalled, not for the routine "the next piece has not landed yet".
+     */
     private fun serveBytes(
-        streamed: StreamedTorrent,
+        streamed: StreamSource,
         start: Long,
         length: Long,
         output: BufferedOutputStream,
     ) {
-        val file = streamed.filePath
-        if (!file.exists()) {
-            TorfilxLog.w(TAG, "Torrent file not on disk yet: ${file.name}")
-            return
-        }
-
         val buffer = ByteArray(CHUNK_BYTES)
         var position = start
         var remaining = length
 
         // One handle for the whole response: re-opening it for every 64 KB chunk was hundreds of
-        // thousands of syscalls per movie on a weak Fire TV CPU.
-        RandomAccessFile(file, "r").use { raf ->
+        // thousands of syscalls per movie on a weak Fire TV CPU. The file is known to exist — the
+        // caller waited for the first byte before sending headers — but it can still be evicted or
+        // moved underneath us, so a failure to open is handled rather than thrown blind.
+        val raf = try {
+            RandomAccessFile(streamed.filePath, "r")
+        } catch (error: IOException) {
+            TorfilxLog.w(TAG, "Cannot open ${streamed.filePath.name} for streaming", error)
+            throw error
+        }
+
+        raf.use {
             while (remaining > 0) {
-                if (!awaitPiece(streamed, position)) {
-                    TorfilxLog.w(TAG, "Timed out waiting for piece at $position; ending stream")
+                if (!awaitReadable(streamed, position, pieceTimeoutMs)) {
+                    // Truly stalled. The response is now unavoidably short; say so plainly in the log
+                    // so the cause is not mistaken for a decoder problem, and let the closed socket
+                    // tell the player.
+                    TorfilxLog.w(
+                        TAG,
+                        "Swarm stalled at byte $position of ${streamed.fileName} " +
+                            "(${remaining / 1024} KB of the response undelivered)",
+                    )
                     return
                 }
                 // Re-prioritise as playback advances so the swarm stays ahead of the read head.
@@ -310,20 +446,31 @@ internal class TorrentStreamServer {
                 output.flush()
                 position += read
                 remaining -= read
-                streamed.lastTouchedMs = System.currentTimeMillis()
+                streamed.touch()
             }
         }
     }
 
-    /** Blocks until the piece holding [position] has arrived, or gives up after the timeout. */
-    private fun awaitPiece(streamed: StreamedTorrent, position: Long): Boolean {
-        if (streamed.hasByte(position)) return true
+    /**
+     * Blocks until the byte at [position] can be read, or [timeoutMs] elapses.
+     *
+     * "Can be read" means both that libtorrent reports the piece present *and* that the file exists
+     * on disk — the file is created lazily, so on the first request of a new title it is missing for
+     * a moment even though the download is healthy. Treating that as a failure is what made a fresh
+     * title fail on its first attempt and succeed on a later one.
+     *
+     * The wait is re-prioritised periodically rather than once: on a slow swarm, the piece the reader
+     * needs can otherwise sit behind a queue that was ordered before the read head moved.
+     */
+    private fun awaitReadable(streamed: StreamSource, position: Long, timeoutMs: Long): Boolean {
+        if (streamed.isReadableAt(position)) return true
         streamed.prioritiseFrom(position)
         var waited = 0L
-        while (waited < PIECE_TIMEOUT_MS) {
+        while (waited < timeoutMs) {
             Thread.sleep(WAIT_STEP_MS)
             waited += WAIT_STEP_MS
-            if (streamed.hasByte(position)) return true
+            if (streamed.isReadableAt(position)) return true
+            if (waited % REPRIORITISE_EVERY_MS < WAIT_STEP_MS) streamed.prioritiseFrom(position)
         }
         return false
     }
@@ -334,6 +481,16 @@ internal class TorrentStreamServer {
         const val SOCKET_TIMEOUT_MS = 30_000
         const val WAIT_STEP_MS = 100L
         const val PIECE_TIMEOUT_MS = 120_000L
+
+        /**
+         * How long the *first* byte of a response may take before the request is refused with a 503.
+         *
+         * Shorter than the mid-stream piece timeout on purpose: nothing has been committed to the
+         * socket yet, so giving up cheaply and letting the caller retry is better than holding the
+         * player on a blank screen. Long enough that a cold swarm still usually makes it.
+         */
+        const val FIRST_BYTE_TIMEOUT_MS = 30_000L
+        const val REPRIORITISE_EVERY_MS = 3_000L
         const val PRIORITISE_EVERY_BYTES = 4L * 1024 * 1024
     }
 }

@@ -60,6 +60,10 @@ private const val CONTROLS_TIMEOUT_MS = 4_000L
 private const val SEEK_COMMIT_DELAY_MS = 300L
 private const val BUFFERING_SPINNER_DELAY_MS = 500L
 
+/** How hard to try to put focus back on the root after the overlay closes. */
+private const val FOCUS_RESTORE_ATTEMPTS = 5
+private const val FOCUS_RESTORE_RETRY_MS = 32L
+
 /**
  * The full-screen player.
  *
@@ -75,6 +79,7 @@ fun PlayerScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val controlsVisible by viewModel.controlsVisible.collectAsStateWithLifecycle()
+    val controlsRevision by viewModel.controlsRevision.collectAsStateWithLifecycle()
     val pendingSeek by viewModel.pendingSeekMs.collectAsStateWithLifecycle()
     val displaySwitching by viewModel.displaySwitching.collectAsStateWithLifecycle()
     val autoSkipIntro by viewModel.skipIntroAutomatically.collectAsStateWithLifecycle()
@@ -96,7 +101,11 @@ fun PlayerScreen(
     }
 
     // Auto-hide the overlay, but never while a modal decision is on screen.
-    LaunchedEffect(controlsVisible, state.isPlaying, state.showStillWatching) {
+    //
+    // Keyed on the interaction revision as well as visibility: every key press bumps it, which
+    // cancels and restarts this effect, so the countdown measures *idle* time rather than time since
+    // the overlay opened. Without it the overlay hid itself mid-interaction.
+    LaunchedEffect(controlsVisible, controlsRevision, state.isPlaying, state.showStillWatching) {
         if (controlsVisible && state.isPlaying && !state.showStillWatching) {
             delay(CONTROLS_TIMEOUT_MS)
             viewModel.hideControls()
@@ -106,8 +115,16 @@ fun PlayerScreen(
     // Keep D-pad input alive. While the overlay is up its scrubber holds focus; when it hides, the
     // focused controls subtree leaves composition, so focus must return to the root Box or the
     // remote goes dead (Up/Down would no longer reach the handler that reopens the overlay).
+    //
+    // The request is retried: a FocusRequester whose node is not yet attached — which is exactly the
+    // case in the frame where the overlay is leaving composition — throws, and a single silent
+    // failure here is indistinguishable from a broken remote.
     LaunchedEffect(controlsVisible) {
-        if (!controlsVisible) runCatching { rootFocus.requestFocus() }
+        if (controlsVisible) return@LaunchedEffect
+        repeat(FOCUS_RESTORE_ATTEMPTS) { attempt ->
+            if (runCatching { rootFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(FOCUS_RESTORE_RETRY_MS * (attempt + 1))
+        }
     }
 
     // Auto-skip fires once per intro window, not on every frame of it.
@@ -183,8 +200,16 @@ fun PlayerScreen(
             Box(Modifier.fillMaxSize().background(TorfilxColors.Background))
         }
 
-        if (state.isBuffering) {
+        // Loading counts as well as buffering. Resolving a magnet can take a minute on a cold swarm,
+        // and until now that minute was a black screen with nothing on it — the same thing a hung app
+        // looks like.
+        if (state.isBuffering || state.isLoading) {
             BufferingIndicator(state = state)
+        }
+
+        // Video with no sound is not an error to ExoPlayer, so it has to be said out loud.
+        state.audioUnavailableReason?.let { reason ->
+            AudioUnavailableNotice(reason = reason, modifier = Modifier.align(Alignment.TopCenter))
         }
 
         // "Sharing is off" is not an error to report but a decision to ask for — the same dialog the
@@ -199,7 +224,10 @@ fun PlayerScreen(
                     onExit()
                 },
             )
-            return
+            // return@Box, not return: a bare return leaves PlayerScreen itself, skipping the effects
+            // declared after the Box. Box's content lambda is inline, so the compiler allows it and
+            // the mistake is silent.
+            return@Box
         }
 
         state.error?.let { error ->
@@ -303,6 +331,7 @@ private fun BufferingIndicator(state: PlayerUiState) {
     // Headline reflects the actual stage, so a long wait is never a mystery: finding peers, fetching
     // the file listing, or genuinely buffering with peers connected.
     val headline = when {
+        stream == null && state.isLoading -> "Starting…"
         stream == null -> "Buffering…"
         !stream.hasMetadata -> "Fetching file details…"
         stream.peers <= 0 -> "Looking for peers…"
@@ -334,7 +363,46 @@ private fun BufferingIndicator(state: PlayerUiState) {
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
+            // e.g. that the swarm is being retried — otherwise a retry is indistinguishable from a hang.
+            state.loadingDetail?.let { detail ->
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TorfilxColors.TextSecondary,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
         }
+    }
+}
+
+/**
+ * Says that the film is playing without sound, and why.
+ *
+ * Deliberately non-modal and at the top of the screen: the video *is* playing and may still be worth
+ * watching (a silent film, or one the viewer wants to see anyway), so this informs rather than
+ * interrupts.
+ */
+@Composable
+private fun AudioUnavailableNotice(reason: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .padding(top = 48.dp, start = 48.dp, end = 48.dp)
+            .background(TorfilxColors.ScrimStrong)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "No sound",
+            style = MaterialTheme.typography.titleLarge,
+            color = TorfilxColors.Warning,
+        )
+        Text(
+            text = reason,
+            style = MaterialTheme.typography.labelLarge,
+            color = TorfilxColors.TextSecondary,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 
@@ -416,7 +484,15 @@ private fun PlayerControls(
     // The scrubber takes focus when the overlay opens, so ←/→ scrub straight away — matching the
     // muscle memory from when the overlay is hidden. Pressing ↓ moves down to the button row.
     val scrubberFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { scrubberFocus.requestFocus() } }
+    // Retried for the same reason the root's restore is: a single silent failure here leaves the
+    // overlay on screen with nothing focused, and an overlay with no focus swallows the remote
+    // entirely — press anything and the app appears frozen.
+    LaunchedEffect(Unit) {
+        repeat(FOCUS_RESTORE_ATTEMPTS) { attempt ->
+            if (runCatching { scrubberFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+            delay(FOCUS_RESTORE_RETRY_MS * (attempt + 1))
+        }
+    }
 
     Column(
         modifier = modifier

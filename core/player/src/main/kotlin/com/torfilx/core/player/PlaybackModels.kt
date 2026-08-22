@@ -82,6 +82,20 @@ data class PlayerUiState(
     val isSwitchingDisplayMode: Boolean = false,
     /** Live streaming stats, non-null while the source is a torrent, so buffering can explain itself. */
     val stream: StreamStats? = null,
+    /**
+     * Extra line shown while loading — e.g. that a swarm is being retried.
+     *
+     * Without it a retry is invisible: the screen looks identical to a hang, which is what made a
+     * slow first attempt feel like a dead app.
+     */
+    val loadingDetail: String? = null,
+    /**
+     * Set when the file has video the device can play but no audio it can decode.
+     *
+     * Silent playback is otherwise indistinguishable from a muted TV, so it is surfaced rather than
+     * left for the viewer to work out.
+     */
+    val audioUnavailableReason: String? = null,
 ) {
     val canSeek: Boolean get() = durationMs > 0 && error == null
     val remainingMs: Long get() = (durationMs - positionMs).coerceAtLeast(0)
