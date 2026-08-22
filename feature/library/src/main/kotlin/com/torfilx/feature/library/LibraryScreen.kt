@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
@@ -20,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -33,10 +31,9 @@ import com.torfilx.core.ui.component.EmptyState
 import com.torfilx.core.ui.component.PosterCard
 import com.torfilx.core.ui.component.SkeletonRow
 import com.torfilx.core.ui.component.TvChip
+import com.torfilx.core.ui.focus.keepNeighbourRowComposed
 import com.torfilx.core.ui.theme.LocalTorfilxDimens
 import com.torfilx.core.ui.theme.TorfilxColors
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * Browse grid for Movies, Shows and My List.
@@ -131,11 +128,12 @@ fun LibraryScreen(
                         card = card,
                         onClick = { onOpenDetails(card.item.id) },
                         onLongClick = { viewModel.toggleMyList(card) },
-                        modifier = Modifier.keepNextRowComposed(
+                        modifier = Modifier.keepNeighbourRowComposed(
                             index = index,
                             itemCount = state.cards.size,
-                            gridState = gridState,
+                            state = gridState,
                             scope = scope,
+                            columns = GRID_COLUMNS,
                         ),
                     )
                 }
@@ -222,44 +220,6 @@ private fun FilterBar(
 
 private const val GRID_COLUMNS = 6
 
-/**
- * Guarantees there is always a composed row past the focused one, in both directions.
- *
- * D-pad navigation in a lazy grid can only move focus to a node that **exists**. A lazy layout
- * composes roughly what is on screen, so when focus reaches the last visible row there is often
- * nothing below it to move to, focus search fails, and the grid stops dead — with 6 columns and four
- * visible rows that is about 25 titles, which is exactly what a full 2000-title catalogue looked
- * like on the TV.
- *
- * Nudging the scroll by one row whenever focus lands on the first or last visible row means the
- * neighbour is always composed before it is needed. It leaves the middle of the grid alone, so it
- * does not fight Compose's own bring-into-view behaviour or make the grid feel jumpy.
- */
-private fun Modifier.keepNextRowComposed(
-    index: Int,
-    itemCount: Int,
-    gridState: LazyGridState,
-    scope: CoroutineScope,
-): Modifier = this.onFocusChanged { focusState ->
-    // hasFocus, not isFocused: this modifier is on the card's container, and the focusable node is
-    // the clickable box inside it. isFocused only reports the node the modifier is attached to, so it
-    // is always false here and the whole mechanism would silently do nothing.
-    if (!focusState.hasFocus) return@onFocusChanged
-    scope.launch {
-        val visible = gridState.layoutInfo.visibleItemsInfo
-        val firstVisible = visible.firstOrNull()?.index ?: return@launch
-        val lastVisible = visible.lastOrNull()?.index ?: return@launch
-        val rowStart = (index / GRID_COLUMNS) * GRID_COLUMNS
-        val target = when {
-            // On (or into) the last visible row: pull the following row into composition.
-            index + GRID_COLUMNS > lastVisible -> rowStart + GRID_COLUMNS
-            // On the first visible row: same, upwards.
-            index - GRID_COLUMNS < firstVisible -> rowStart - GRID_COLUMNS
-            else -> return@launch
-        }
-        runCatching { gridState.animateScrollToItem(target.coerceIn(0, (itemCount - 1).coerceAtLeast(0))) }
-    }
-}
 
 private fun LibrarySort.label(): String = when (this) {
     LibrarySort.RECENTLY_ADDED -> "Recently added"

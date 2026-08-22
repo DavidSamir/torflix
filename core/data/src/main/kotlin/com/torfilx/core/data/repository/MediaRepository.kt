@@ -238,7 +238,16 @@ class MediaRepository @Inject constructor(
         const val ROW_CONTINUE_WATCHING = "continue-watching"
         const val ROW_MY_LIST = "my-list"
         const val ROW_CATALOG = "catalog"
-        const val SEARCH_LIMIT = 60
+        /**
+         * How many search results are returned.
+         *
+         * This was 60, which quietly truncated any broad query — searching a common word in a
+         * 2000-title catalogue returned the first 60 matches and nothing said so. The cap exists
+         * only to bound the work done per keystroke on a very slow CPU, and 500 titles of card
+         * wrappers is well within that; the results grid is lazy, so nothing beyond the visible rows
+         * is laid out.
+         */
+        const val SEARCH_LIMIT = 500
         const val RECENT_SEARCH_LIMIT = 10
         private const val SLOW_SEARCH_MS = 50L
         private const val TAG = "MediaRepo"

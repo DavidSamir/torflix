@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +35,7 @@ import com.torfilx.core.ui.component.OnScreenKeyboard
 import com.torfilx.core.ui.component.PosterCard
 import com.torfilx.core.ui.component.SearchField
 import com.torfilx.core.ui.component.TvChip
+import com.torfilx.core.ui.focus.keepNeighbourRowComposed
 import com.torfilx.core.ui.theme.LocalTorfilxDimens
 import com.torfilx.core.ui.theme.TorfilxColors
 
@@ -57,6 +58,8 @@ fun SearchScreen(
     androidx.activity.compose.BackHandler(enabled = true) { onBack() }
     var layout by remember { mutableStateOf(KeyboardLayout.LATIN) }
     val firstKeyFocus = remember { FocusRequester() }
+    val resultsState = rememberLazyGridState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         runCatching { firstKeyFocus.requestFocus() }
@@ -112,6 +115,7 @@ fun SearchScreen(
 
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(RESULT_COLUMNS),
+                    state = resultsState,
                     modifier = Modifier
                         .fillMaxSize()
                         .focusGroup()
@@ -121,13 +125,23 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(dimens.cardSpacing + 16.dp),
                 ) {
                     items(
-                        items = state.results,
-                        key = { result -> result.card.playableId },
+                        count = state.results.size,
+                        key = { index -> state.results[index].card.playableId },
                         contentType = { "poster" },
-                    ) { result ->
+                    ) { index ->
+                        val result = state.results[index]
                         PosterCard(
                             card = result.card,
                             onClick = { onOpenDetails(result.card.item.id) },
+                            // Same dead-end as every other lazy layout on this screen family: without
+                            // it the results stop at the last composed row.
+                            modifier = Modifier.keepNeighbourRowComposed(
+                                index = index,
+                                itemCount = state.results.size,
+                                state = resultsState,
+                                scope = scope,
+                                columns = RESULT_COLUMNS,
+                            ),
                         )
                     }
                 }

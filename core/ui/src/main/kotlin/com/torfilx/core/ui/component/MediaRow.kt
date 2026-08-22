@@ -7,15 +7,16 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.torfilx.core.model.MediaCard
+import com.torfilx.core.ui.focus.keepNeighbourComposed
 import com.torfilx.core.ui.theme.LocalTorfilxDimens
 import com.torfilx.core.ui.theme.TorfilxColors
 
@@ -41,6 +42,7 @@ fun MediaRow(
     if (items.isEmpty()) return
     val dimens = LocalTorfilxDimens.current
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     Column(modifier = modifier.fillMaxWidth()) {
         RowHeader(title = title, trailing = headerTrailing)
@@ -60,21 +62,33 @@ fun MediaRow(
                 .focusRestorer(),
         ) {
             items(
-                items = items,
-                key = { card -> card.playableId },
+                count = items.size,
+                key = { index -> items[index].playableId },
                 contentType = { if (landscape) "landscape" else "poster" },
-            ) { card ->
+            ) { index ->
+                val card = items[index]
+                // Without this the row stops at the last card the lazy layout happened to compose,
+                // which on a 1080p screen is about five of them — a 217-title genre row looked like
+                // the handful at its front, with nothing on screen to suggest otherwise.
+                val focusNudge = Modifier.keepNeighbourComposed(
+                    index = index,
+                    itemCount = items.size,
+                    state = listState,
+                    scope = scope,
+                )
                 if (landscape) {
                     LandscapeCard(
                         card = card,
                         onClick = { onCardClick(card) },
                         onLongClick = onCardLongClick?.let { handler -> { handler(card) } },
+                        modifier = focusNudge,
                     )
                 } else {
                     PosterCard(
                         card = card,
                         onClick = { onCardClick(card) },
                         onLongClick = onCardLongClick?.let { handler -> { handler(card) } },
+                        modifier = focusNudge,
                     )
                 }
             }

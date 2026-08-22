@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +31,7 @@ import com.torfilx.core.ui.component.EmptyState
 import com.torfilx.core.ui.component.HeroSection
 import com.torfilx.core.ui.component.MediaRow
 import com.torfilx.core.ui.component.SkeletonRow
+import com.torfilx.core.ui.focus.keepNeighbourComposed
 import com.torfilx.core.ui.theme.LocalTorfilxDimens
 import com.torfilx.core.ui.theme.TorfilxColors
 import kotlinx.coroutines.launch
@@ -103,6 +103,7 @@ private fun HomeContent(
     val dimens = LocalTorfilxDimens.current
     val listState = rememberLazyListState()
     val heroPlayFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
 
     // Initial focus lands on the hero Play button, and only once content exists — requesting focus
     // while the screen is still Loading silently fails (plan.md §5.2 rule 1).
@@ -138,11 +139,21 @@ private fun HomeContent(
             }
 
             items(
-                items = state.rows,
-                key = { row -> row.id },
+                count = state.rows.size,
+                key = { index -> state.rows[index].id },
                 contentType = { "row" },
-            ) { row ->
+            ) { index ->
+                val row = state.rows[index]
                 MediaRow(
+                    // The hero occupies index 0 of the lazy column, so a row's position there is one
+                    // further along than its position in `rows`. Getting that off by one would nudge
+                    // the scroll to the wrong row and fight the focus instead of helping it.
+                    modifier = Modifier.keepNeighbourComposed(
+                        index = index + if (state.hero.isNotEmpty()) 1 else 0,
+                        itemCount = state.rows.size + 1,
+                        state = listState,
+                        scope = scope,
+                    ),
                     title = row.title,
                     items = row.items,
                     landscape = row.kind == HomeRowKind.CONTINUE_WATCHING,
