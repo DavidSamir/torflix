@@ -2,6 +2,7 @@ package com.torfilx.core.data.torrent
 
 import com.torfilx.core.common.di.ApplicationScope
 import com.torfilx.core.common.log.TorfilxLog
+import com.torfilx.core.data.repository.ContributionRepository
 import com.torfilx.core.data.settings.SettingsRepository
 import com.torfilx.core.torrent.LibTorrentEngine
 import com.torfilx.core.torrent.SharingConsentProvider
@@ -36,8 +37,12 @@ class TorrentCoordinator @Inject constructor(
     private val engine: TorrentEngine,
     private val libTorrentEngine: LibTorrentEngine,
     private val settingsRepository: SettingsRepository,
+    private val contributionRepository: ContributionRepository,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
+
+    @Volatile
+    private var lastOnDiskSyncMs: Long = 0L
 
     val stats: Flow<SharingStats> = engine.stats
 
@@ -75,6 +80,28 @@ class TorrentCoordinator @Inject constructor(
                 settingsRepository.cachedUseDht = s.useDht
                 settingsRepository.cachedUseExtraTrackers = s.useExtraTrackers
                 settingsRepository.cachedMetadataTimeoutSeconds = s.metadataTimeout.seconds
+            }
+            .launchIn(scope)
+
+        // Fold the engine's session-scoped counters into a lifetime record.
+        //
+        // Deliberately attached to the status flow the engine already emits once a second rather
+        // than given a loop of its own: the contribution record must cost a subtraction per active
+        // torrent, not a second timer competing for a very small CPU.
+        engine.torrents
+            .onEach { statuses ->
+                val now = System.currentTimeMillis()
+                contributionRepository.record(
+                    statuses = statuses,
+                    consented = settingsRepository.cachedSharingConsent,
+                    nowMs = now,
+                )
+                // Reconciled rarely — this is only about whether a row can still show a piece strip,
+                // and it costs two small writes.
+                if (now - lastOnDiskSyncMs >= ON_DISK_SYNC_INTERVAL_MS) {
+                    lastOnDiskSyncMs = now
+                    contributionRepository.syncOnDisk(statuses.map { it.infoHash })
+                }
             }
             .launchIn(scope)
     }
@@ -115,6 +142,14 @@ class TorrentCoordinator @Inject constructor(
     @Volatile
     private var warmedUp: Boolean = false
 
+    /**
+     * Which parts of a title are cached here, for the contribution page.
+     *
+     * Null once the data has been evicted; the contribution record outlives the file.
+     */
+    fun cachedParts(infoHash: String, buckets: Int = com.torfilx.core.model.CachedParts.BUCKETS) =
+        engine.cachedParts(infoHash, buckets)
+
     /** Resolves a magnet into a locally-served URL the player can open. */
     suspend fun stream(magnet: String): TorrentStream {
         settingsRepository.cachedSharingConsent = settingsRepository.sharingConsent.first()
@@ -130,12 +165,27 @@ class TorrentCoordinator @Inject constructor(
         }
     }
 
-    /** Deletes every downloaded byte from disk; watch history and My List are untouched. */
+    /**
+     * Deletes every downloaded byte from disk; watch history and My List are untouched.
+     *
+     * The contribution record goes too. A per-title log of what someone has seeded is exactly the
+     * sort of thing "clear my data" has to mean, and leaving it behind would be a nasty surprise.
+     */
     suspend fun clearAllData() {
         engine.purgeAllData()
+        contributionRepository.clear()
     }
 
-    suspend fun shutdown() = engine.stop()
+    suspend fun shutdown() {
+        // Flush before the session goes away, or the last half-minute of sharing is lost.
+        runCatching { contributionRepository.flush(System.currentTimeMillis()) }
+        engine.stop()
+    }
+
+    private companion object {
+        /** How often the on-disk flags are reconciled. Rare on purpose — it is two small writes. */
+        const val ON_DISK_SYNC_INTERVAL_MS = 60_000L
+    }
 }
 
 /** Bridges the persisted consent flag into the engine without a dependency cycle. */

@@ -36,8 +36,11 @@ class TorfilxDatabaseMigrationTest {
         // Create the earliest schema from its exported JSON.
         helper.createDatabase(TEST_DB, 1).close()
 
-        // As migrations are added, validate the chain here, e.g.:
-        // helper.runMigrationsAndValidate(TEST_DB, 2, true, MIGRATION_1_2)
+        // 1 -> 2 adds the contribution tables. Validating rather than merely running it is the
+        // point: it compares the migrated schema against the exported JSON for version 2, so a
+        // column type, a NOT NULL or an index name that drifts from the entity fails here instead
+        // of at startup on someone.s television.
+        helper.runMigrationsAndValidate(TEST_DB, 2, true, MIGRATION_1_2)
 
         // Opening the real database exercises the current schema against the created one.
         Room.databaseBuilder(

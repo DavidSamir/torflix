@@ -6,6 +6,7 @@ import com.torfilx.core.common.di.ApplicationScope
 import com.torfilx.core.common.di.Dispatcher
 import com.torfilx.core.common.di.TorfilxDispatcher
 import com.torfilx.core.common.log.TorfilxLog
+import com.torfilx.core.model.CachedParts
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -349,6 +350,50 @@ class LibTorrentEngine @Inject constructor(
 
         if (used > cap) {
             TorfilxLog.w(TAG, "Still over the storage cap after eviction (${used / 1_000_000} MB)")
+        }
+    }
+
+    /**
+     * Which parts of a title's video file are held on this device.
+     *
+     * Read on demand rather than polled. libtorrent's bitfield covers the whole torrent and is one
+     * entry per piece — several thousand for a feature film — so this is deliberately not part of the
+     * status tick: it is computed only when something is actually going to draw it, restricted to the
+     * pieces belonging to the one file that was downloaded, and downsampled before it leaves here.
+     * Nothing downstream ever sees the full-resolution bitfield.
+     */
+    override fun cachedParts(infoHash: String, buckets: Int): CachedParts? {
+        val streamed = managedTorrents[infoHash] ?: return null
+        return runCatching {
+            val range = filePieceRange(
+                fileOffset = streamed.fileOffset,
+                fileSizeBytes = streamed.fileSizeBytes,
+                pieceLength = streamed.pieceLength,
+                numPieces = streamed.numPieces,
+            )
+            if (range.isEmpty()) return null
+
+            val have = ArrayList<Boolean>(range.last - range.first + 1)
+            var havePieces = 0
+            for (piece in range) {
+                val present = streamed.handle.havePiece(piece)
+                have += present
+                if (present) havePieces++
+            }
+
+            CachedParts(
+                buckets = downsamplePieces(have, buckets),
+                // Approximated from whole pieces, which is the only resolution libtorrent reports.
+                // Capped at the file size so a part-piece at each end cannot read as >100%.
+                haveBytes = minOf(
+                    havePieces.toLong() * streamed.pieceLength,
+                    streamed.fileSizeBytes,
+                ),
+                totalBytes = streamed.fileSizeBytes,
+            )
+        }.getOrElse {
+            TorfilxLog.w(TAG, "Could not read the piece map for $infoHash", it)
+            null
         }
     }
 

@@ -83,3 +83,75 @@ interface SearchHistoryDao {
     )
     suspend fun trim(keep: Int)
 }
+
+@Dao
+interface ContributionDao {
+
+    /**
+     * Adds a delta to a title's lifetime totals, creating the row on first sight.
+     *
+     * Written as an upsert in SQL rather than read-modify-write in Kotlin so the accumulation is
+     * atomic: the fold runs from a background tick while the contribution screen may be reading, and
+     * a lost update here silently loses someone's shared bytes.
+     */
+    @Query(
+        """
+        INSERT INTO contribution (
+            infoHash, title, uploadedBytes, downloadedBytes, sizeBytes,
+            firstSharedAtMs, lastActiveAtMs, stillOnDisk
+        )
+        VALUES (:infoHash, :title, :uploaded, :downloaded, :sizeBytes, :nowMs, :nowMs, :onDisk)
+        ON CONFLICT(infoHash) DO UPDATE SET
+            uploadedBytes = uploadedBytes + :uploaded,
+            downloadedBytes = downloadedBytes + :downloaded,
+            -- Size and title are refreshed because the first sighting may predate metadata arriving.
+            sizeBytes = MAX(sizeBytes, :sizeBytes),
+            title = CASE WHEN :title != '' THEN :title ELSE title END,
+            lastActiveAtMs = :nowMs,
+            stillOnDisk = :onDisk
+        """,
+    )
+    suspend fun accumulate(
+        infoHash: String,
+        title: String,
+        uploaded: Long,
+        downloaded: Long,
+        sizeBytes: Long,
+        nowMs: Long,
+        onDisk: Boolean,
+    )
+
+    @Query("SELECT * FROM contribution ORDER BY uploadedBytes DESC")
+    fun observeAll(): Flow<List<ContributionEntity>>
+
+    /** Marks everything as gone from disk; the caller then re-marks what is actually present. */
+    @Query("UPDATE contribution SET stillOnDisk = 0")
+    suspend fun clearOnDiskFlags()
+
+    @Query("UPDATE contribution SET stillOnDisk = 1 WHERE infoHash IN (:infoHashes)")
+    suspend fun markOnDisk(infoHashes: List<String>)
+
+    @Query("DELETE FROM contribution")
+    suspend fun clear()
+
+    @Query(
+        """
+        INSERT INTO contribution_day (epochDay, uploadedBytes, downloadedBytes)
+        VALUES (:epochDay, :uploaded, :downloaded)
+        ON CONFLICT(epochDay) DO UPDATE SET
+            uploadedBytes = uploadedBytes + :uploaded,
+            downloadedBytes = downloadedBytes + :downloaded
+        """,
+    )
+    suspend fun accumulateDay(epochDay: Long, uploaded: Long, downloaded: Long)
+
+    @Query("SELECT * FROM contribution_day WHERE epochDay >= :sinceEpochDay ORDER BY epochDay")
+    fun observeDaysSince(sinceEpochDay: Long): Flow<List<ContributionDayEntity>>
+
+    /** Keeps the rollup bounded; the chart never looks further back than this. */
+    @Query("DELETE FROM contribution_day WHERE epochDay < :beforeEpochDay")
+    suspend fun pruneDaysBefore(beforeEpochDay: Long)
+
+    @Query("DELETE FROM contribution_day")
+    suspend fun clearDays()
+}

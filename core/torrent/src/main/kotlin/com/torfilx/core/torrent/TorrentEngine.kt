@@ -1,5 +1,6 @@
 package com.torfilx.core.torrent
 
+import com.torfilx.core.model.CachedParts
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -41,6 +42,15 @@ interface TorrentEngine {
 
     /** Frees disk until usage is within the budget, oldest-touched torrents first. */
     suspend fun enforceStorageBudget()
+
+    /**
+     * Which parts of a title.s video file are on this device, downsampled for drawing.
+     *
+     * Null when the torrent is no longer in the session — the contribution record outlives the data,
+     * so a row may legitimately have nothing to draw. Read on demand only: the bitfield is thousands
+     * of entries and nothing should be paying for it while the screen is closed.
+     */
+    fun cachedParts(infoHash: String, buckets: Int): CachedParts?
 
     /** Stops the session and deletes every downloaded byte from disk. */
     suspend fun purgeAllData()

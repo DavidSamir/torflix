@@ -6,6 +6,8 @@ import com.torfilx.core.data.database.MyListDao
 import com.torfilx.core.data.database.TorfilxDatabase
 import com.torfilx.core.data.database.ProgressDao
 import com.torfilx.core.data.database.SearchHistoryDao
+import com.torfilx.core.data.database.ContributionDao
+import com.torfilx.core.data.database.MIGRATION_1_2
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,6 +26,7 @@ object DatabaseModule {
         Room.databaseBuilder(context, TorfilxDatabase::class.java, TorfilxDatabase.NAME)
             // No destructive fallback: losing watch progress on an upgrade is not acceptable, so a
             // missing migration must fail loudly in development instead of silently wiping data.
+            .addMigrations(MIGRATION_1_2)
             .build()
 
     @Provides
@@ -36,6 +39,9 @@ object DatabaseModule {
     fun providesSearchHistoryDao(database: TorfilxDatabase): SearchHistoryDao =
         database.searchHistoryDao()
 
+    @Provides
+    fun providesContributionDao(database: TorfilxDatabase): ContributionDao =
+        database.contributionDao()
 }
 
 /**
