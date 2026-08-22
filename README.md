@@ -62,6 +62,48 @@ tested on a device, and one (operator boxes) gated by the operator's lock rather
 this build. Vega OS is listed as an eleventh row on purpose — it is not an Android TV system, but it
 is where Amazon is moving all new hardware, so omitting it would overstate the app's reach.
 
+### Beyond Android: the wider TV OS market, and what a port would cost
+
+Only two of the ten biggest TV operating systems run Android — and they are the two we already ship
+to. The rest are Linux or Darwin platforms where an APK is not a file the system recognises.
+
+Shares below come from three datasets that disagree by design: CTVMA counts TV sets shipped and
+**excludes HDMI dongles** (which structurally undercounts Roku, Fire TV and Google TV), Parks
+Associates counts US broadband households, Omdia counts European shipments.
+
+Port difficulty is scored 1–5 on how much of *this* codebase survives:
+
+| Level | Meaning |
+| --- | --- |
+| **1 — free** | the existing release APK installs and runs; the work is verification |
+| **2 — days** | same codebase; a build-config change plus on-device testing |
+| **3 — months, engine survives** | new language and UI, but libtorrent's C++ still compiles and runs on-device |
+| **4 — a year+, engine moves** | the runtime forbids third-party native code, so the torrent engine must be replaced or relocated to a remote gateway — a different product |
+| **5 — not open to us** | no public SDK, or no install path we control; effort does not change the outcome |
+
+| # | OS | Base | Global sets (CTVMA '24) | Other reach signal | App model | Port difficulty |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | **Google TV / Android TV** | Android | 5.9% | 300M monthly-active devices; #1 in Europe at 32% | Android APK | **1** — this is us |
+| 2 | **Roku OS** | Linux | 6.4% | #1 in the US at 28%; 100M+ streaming households | BrightScript + SceneGraph | **4** — no native modules and no raw sockets; then channel certification |
+| 3 | **Samsung Tizen** | Linux | **12.8% (#1)** | #2 in the US at 23% | HTML5 web app (`.wgt`) | **4** — the web runtime bans native code; then Samsung store review |
+| 4 | **Amazon Fire OS** | Android | 6.4% | 250M+ Fire TVs sold; ≈17% of the US | Android APK | **1** — primary target, tested on API 22/25/28/30 |
+| 5 | **LG webOS** | Linux | 7.4% | ≈12% overall, 52% of the premium OLED tier | HTML5 / Enact (`.ipk`) | **4** — same shape as Tizen |
+| 6 | **Hisense VIDAA** | Linux | **7.8% (#2)** | overtakes webOS in Europe during 2026 | HTML5 (VIDAA U SDK) | **5** — SDK access is partner-gated |
+| 7 | **Apple tvOS** | Darwin | — (no sets) | ≈8% of US households | Swift / SwiftUI | **3** — technically the *easiest* non-Android port: libtorrent compiles for tvOS and AVPlayer replaces ExoPlayer. App Store review and the absence of any sideload path are what stop it, not the code |
+| 8 | **Vizio SmartCast** | Linux | 5.8% | ≈18.5–20M monthly actives, US only | none published | **5** — no third-party developer programme exists at all |
+| 9 | **Xperi TiVo OS** | Linux | 2.3% | Vestel OEM, the European growth play | HTML5 | **5** — partner-only |
+| 10 | **Titan OS** | Linux | inside "other" | Philips and Sharp, Europe | HTML5 | **5** — partner-only |
+| — | **Amazon Vega OS** | Linux | new | every *future* Fire TV Stick | React Native (Kepler SDK) | **5** — approval-gated programme, sideloading removed entirely |
+
+Level 2 never appears above because it only occurs *inside* the Android rows: re-adding `x86_64` for
+an x86 box, or rebuilding the native libraries 16 KB-aligned for Android 15+ arm64.
+
+The recurring wall is distribution, not code. Every platform in rows 2–10 is store-gated with review,
+and their developer modes are testing tools rather than distribution channels — a BitTorrent client
+does not pass Roku's, Samsung's, LG's or Apple's certification whatever the catalogue holds. So a
+port is not one rewrite; it is a rewrite into a channel that then rejects it. Sideload-only delivery
+works on Android-based TV OSes and nowhere else, which is exactly the two rows we already reach.
+
 ### Watch items
 
 1. **Vega OS erosion.** Every future Fire TV Stick is Vega. Our best-tested platform is a *shrinking*
@@ -90,7 +132,12 @@ Sources for the market figures, which age quickly:
 [Android 14 for TV](https://www.androidauthority.com/android-tv-14-features-3362883/) ·
 [Xiaomi TV Box S 3rd Gen](https://www.mi.com/global/product/xiaomi-tv-box-s-3rd-gen/specs/) ·
 [sideloading restrictions](https://www.androidauthority.com/how-android-sideloading-restrictions-may-work-3595355/) ·
-[16 KB page sizes](https://developer.android.com/guide/practices/page-sizes)
+[16 KB page sizes](https://developer.android.com/guide/practices/page-sizes) ·
+[CTVMA global OS ranking](https://www.nexttv.com/news/hisenses-vidaa-is-now-the-no-2-smart-tv-os-globally-behind-samsung-tizen-trade-group-says-chart-of-the-day) ·
+[Parks Associates, US Q1 2026](https://www.parksassociates.com/blogs/pr-video-services-ott-pay-tv/roku-and-samsung-dominate-connected-tv-platforms) ·
+[Omdia on emerging European TV OS](https://www.broadbandtvnews.com/2026/04/23/emerging-tv-os-platforms-to-take-30-share-in-europe-by-2030-says-omdia/) ·
+[Vizio SmartCast actives](https://www.lightreading.com/video-streaming/walmart-tunes-up-smart-tv-play-with-2-3b-deal-for-vizio) ·
+[TV app runtimes compared](https://www.forasoft.com/learn/video-streaming/articles-streaming/smart-tv-players-tizen-webos-roku-vidaa)
 
 ## Build and run
 
